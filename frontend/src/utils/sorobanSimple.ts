@@ -178,7 +178,7 @@ export const generateTestMetadataUri = (testId: string, _testData?: any): string
 /**
  * Helper to generate metadata URI for badges
  */
-export const generateBadgeMetadataUri = (testId: string, walletAddress: string, _testTitle?: string): string => {
+export const generateBadgeMetadataUri = (testId: string, walletAddress: string, testTitle?: string): string => {
   // In production, this would upload to IPFS or Arweave
   // For now, we'll use a Supabase-based URL
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;

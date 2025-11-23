@@ -18,12 +18,15 @@ const EarnTab = ({ walletAddress, onTakeTest }: EarnTabProps) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [userAttempts, setUserAttempts] = useState<Set<string>>(new Set());
+  const [userRegistrations, setUserRegistrations] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchTests();
+    fetchUserData();
     // Log contract info on component mount
     logContractInfo();
-  }, []);
+  }, [walletAddress]);
 
   useEffect(() => {
     // Filter tests based on search query
@@ -107,6 +110,71 @@ const EarnTab = ({ walletAddress, onTakeTest }: EarnTabProps) => {
       setError(err.message || 'Failed to load tests');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchUserData = async () => {
+    try {
+      // Fetch user's attempts to check which tests they've already taken
+      const { data: attemptsData } = await supabase
+        .from('attempts')
+        .select('test_id')
+        .eq('candidate_wallet', walletAddress);
+
+      if (attemptsData) {
+        setUserAttempts(new Set(attemptsData.map(a => a.test_id)));
+      }
+
+      // Fetch user's registrations
+      const { data: regsData } = await supabase
+        .from('test_registrations')
+        .select('test_id')
+        .eq('wallet_address', walletAddress);
+
+      if (regsData) {
+        setUserRegistrations(new Set(regsData.map(r => r.test_id)));
+      }
+    } catch (err) {
+      console.error('Error fetching user data:', err);
+    }
+  };
+
+  const handleRegister = async (testId: string) => {
+    try {
+      // Insert registration
+      const { error: regError } = await supabase
+        .from('test_registrations')
+        .insert([{
+          test_id: testId,
+          wallet_address: walletAddress
+        }]);
+
+      if (regError) {
+        if (regError.message.includes('duplicate')) {
+          alert('You are already registered for this test!');
+        } else {
+          throw regError;
+        }
+        return;
+      }
+
+      // Update test registration count
+      const test = upcomingTests.find(t => t.id === testId);
+      if (test) {
+        await supabase
+          .from('tests')
+          .update({ registration_count: (test.registration_count || 0) + 1 })
+          .eq('id', testId);
+      }
+
+      // Refresh data
+      await fetchTests();
+      await fetchUserData();
+      
+      alert('Successfully registered for the test!');
+    } catch (err: any) {
+      console.error('Error registering for test:', err);
+      alert(`Failed to register: ${err.message}`);
     }
   };
 
@@ -262,7 +330,13 @@ const EarnTab = ({ walletAddress, onTakeTest }: EarnTabProps) => {
         >
           <p className="text-xs text-gray-500 mb-1">Start Time</p>
           <p className="font-mono text-xs" style={{ color: colors.blue }}>
-            {new Date(test.start_time).toLocaleDateString()}
+            {new Date(test.start_time).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
           </p>
         </div>
 
@@ -272,36 +346,61 @@ const EarnTab = ({ walletAddress, onTakeTest }: EarnTabProps) => {
         >
           <p className="text-xs text-gray-500 mb-1">End Time</p>
           <p className="font-mono text-xs" style={{ color: colors.darkRed }}>
-            {new Date(test.end_time).toLocaleDateString()}
+            {new Date(test.end_time).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
           </p>
         </div>
       </div>
 
       <div className="space-y-2">
-        <button
-          className="w-full text-white font-semibold py-3 px-6 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
-          style={{
-            background: status === 'active'
-              ? `linear-gradient(135deg, ${colors.orange} 0%, ${colors.gold} 100%)`
-              : status === 'upcoming'
-              ? `linear-gradient(135deg, ${colors.blue} 0%, ${colors.lightBlue} 100%)`
-              : `linear-gradient(135deg, ${colors.rose} 0%, ${colors.pink} 100%)`,
-            borderRadius: '6px',
-            cursor: 'pointer'
-          }}
-          onClick={() => {
-            if (status === 'active') {
-              onTakeTest(test.id);
-            } else if (status === 'upcoming') {
-              // TODO: Register for test
-              alert(`Register for test: ${test.title}`);
-            } else {
-              onTakeTest(test.id);
-            }
-          }}
-        >
-          {status === 'active' ? 'Take Test & Earn Badge' : status === 'upcoming' ? 'Register' : 'Take for Practice (No Badge)'}
-        </button>
+        {/* Check if user already took this active test */}
+        {status === 'active' && userAttempts.has(test.id) ? (
+          <div
+            className="w-full text-center py-3 px-6 font-semibold"
+            style={{
+              backgroundColor: colors.lightMint,
+              color: '#059669',
+              borderRadius: '6px',
+              border: `2px solid #059669`
+            }}
+          >
+            ✓ Already Completed
+          </div>
+        ) : (
+          <button
+            className="w-full text-white font-semibold py-3 px-6 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              background: status === 'active'
+                ? `linear-gradient(135deg, ${colors.orange} 0%, ${colors.gold} 100%)`
+                : status === 'upcoming'
+                ? `linear-gradient(135deg, ${colors.blue} 0%, ${colors.lightBlue} 100%)`
+                : `linear-gradient(135deg, ${colors.rose} 0%, ${colors.pink} 100%)`,
+              borderRadius: '6px',
+              cursor: 'pointer'
+            }}
+            disabled={status === 'upcoming' && userRegistrations.has(test.id)}
+            onClick={() => {
+              if (status === 'active') {
+                onTakeTest(test.id);
+              } else if (status === 'upcoming') {
+                handleRegister(test.id);
+              } else {
+                onTakeTest(test.id);
+              }
+            }}
+          >
+            {status === 'active' 
+              ? 'Take Test & Earn Badge' 
+              : status === 'upcoming' 
+                ? (userRegistrations.has(test.id) ? '✓ Registered' : 'Register for Test')
+                : 'Take for Practice (No Badge)'}
+          </button>
+        )}
         {status === 'previous' && (
           <p className="text-xs text-center text-gray-500 italic">
             Test ended - practice mode only, no badge awarded
