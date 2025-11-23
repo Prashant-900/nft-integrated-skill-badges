@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
 import { colors } from '../config/colors';
-import { supabase, type Badge, type Test } from '../config/supabase';
+import { supabase, type Badge, type Test, type Attempt } from '../config/supabase';
 
 interface BadgeWithTest extends Badge {
+  test?: Test;
+}
+
+interface PracticeAttempt extends Attempt {
   test?: Test;
 }
 
@@ -10,19 +14,27 @@ interface BadgesTabProps {
   walletAddress: string;
 }
 
+interface GroupedBadges {
+  company: string;
+  badges: BadgeWithTest[];
+  practiceAttempts: PracticeAttempt[];
+}
+
 const BadgesTab = ({ walletAddress }: BadgesTabProps) => {
-  const [badges, setBadges] = useState<BadgeWithTest[]>([]);
+  const [groupedBadges, setGroupedBadges] = useState<GroupedBadges[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [filterByCompany, setFilterByCompany] = useState<Record<string, 'all' | 'active' | 'practice'>>({});
 
   useEffect(() => {
-    fetchUserBadges();
+    fetchUserBadgesAndAttempts();
   }, [walletAddress]);
 
-  const fetchUserBadges = async () => {
+  const fetchUserBadgesAndAttempts = async () => {
     try {
       setLoading(true);
 
+      // Fetch badges
       const { data: badgesData, error: badgesError } = await supabase
         .from('badges')
         .select('*')
@@ -31,28 +43,104 @@ const BadgesTab = ({ walletAddress }: BadgesTabProps) => {
 
       if (badgesError) throw badgesError;
 
-      if (badgesData && badgesData.length > 0) {
-        const testIds = badgesData.map(b => b.test_id);
+      // Fetch ALL attempts (both passed and failed) - we'll determine which are practice later
+      const { data: attemptsData, error: attemptsError } = await supabase
+        .from('attempts')
+        .select('*')
+        .eq('candidate_wallet', walletAddress)
+        .order('created_at', { ascending: false });
 
+      if (attemptsError) throw attemptsError;
+
+      console.log('=== DEBUG: Fetching Badges and Attempts ===');
+      console.log('Wallet Address:', walletAddress);
+      console.log('All attempts fetched:', attemptsData?.length);
+      console.log('Attempts data:', attemptsData);
+      console.log('Badges data:', badgesData?.length);
+      console.log('Badges:', badgesData);
+
+      // Get unique test IDs from both badges and attempts
+      const badgeTestIds = badgesData?.map(b => b.test_id) || [];
+      const attemptTestIds = attemptsData?.map(a => a.test_id) || [];
+      const allTestIds = [...new Set([...badgeTestIds, ...attemptTestIds])];
+
+      if (allTestIds.length > 0) {
+        // Fetch all test data
         const { data: testsData, error: testsError } = await supabase
           .from('tests')
           .select('*')
-          .in('id', testIds);
+          .in('id', allTestIds);
 
         if (testsError) throw testsError;
 
-        const badgesWithTests = badgesData.map(badge => ({
+        // Map badges with test data
+        const badgesWithTests: BadgeWithTest[] = (badgesData || []).map(badge => ({
           ...badge,
           test: testsData?.find(t => t.id === badge.test_id)
         }));
 
-        setBadges(badgesWithTests);
+        // Show ALL attempts as practice tests (badges are shown separately)
+        const practiceAttemptsWithTests: PracticeAttempt[] = (attemptsData || [])
+          .map(attempt => ({
+            ...attempt,
+            test: testsData?.find(t => t.id === attempt.test_id)
+          }));
+
+        console.log('Total attempts:', attemptsData?.length);
+        console.log('Practice attempts (ALL):', practiceAttemptsWithTests.length);
+        console.log('Practice attempts details:', practiceAttemptsWithTests);
+        console.log('Badges:', badgesWithTests.length);
+
+        // Group by company
+        const grouped = new Map<string, GroupedBadges>();
+
+        // Add badges to groups
+        badgesWithTests.forEach(badge => {
+          const company = badge.test?.company || 'Independent';
+          if (!grouped.has(company)) {
+            grouped.set(company, {
+              company,
+              badges: [],
+              practiceAttempts: []
+            });
+          }
+          grouped.get(company)!.badges.push(badge);
+        });
+
+        // Add practice attempts to groups
+        practiceAttemptsWithTests.forEach(attempt => {
+          const company = attempt.test?.company || 'Independent';
+          if (!grouped.has(company)) {
+            grouped.set(company, {
+              company,
+              badges: [],
+              practiceAttempts: []
+            });
+          }
+          grouped.get(company)!.practiceAttempts.push(attempt);
+        });
+
+        // Convert to array and sort by company name
+        const groupedArray = Array.from(grouped.values()).sort((a, b) => 
+          a.company.localeCompare(b.company)
+        );
+
+        console.log('=== FINAL GROUPED DATA ===');
+        console.log('Grouped by company:', groupedArray);
+        groupedArray.forEach(group => {
+          console.log(`Company: ${group.company}`);
+          console.log(`  - Badges: ${group.badges.length}`);
+          console.log(`  - Practice Attempts: ${group.practiceAttempts.length}`);
+        });
+
+        setGroupedBadges(groupedArray);
       } else {
-        setBadges([]);
+        setGroupedBadges([]);
       }
     } catch (err: any) {
       console.error('Error fetching badges:', err);
       setError(err.message || 'Failed to load badges');
+      setGroupedBadges([]);
     } finally {
       setLoading(false);
     }
@@ -82,23 +170,23 @@ const BadgesTab = ({ walletAddress }: BadgesTabProps) => {
     );
   }
 
-  if (badges.length === 0) {
+  if (groupedBadges.length === 0) {
     return (
       <div
         className="bg-white shadow-md p-8 text-center"
         style={{ borderRadius: '8px' }}
       >
         <h3 className="text-2xl font-bold mb-3" style={{ color: colors.darkRed }}>
-          No Badges Yet
+          No Badges or Completed Tests Yet
         </h3>
         <p className="text-gray-600 mb-6">
-          You haven't earned any badges yet. Take tests to earn your first badge!
+          You haven't earned any badges or completed any tests yet. Take tests to earn your first badge!
         </p>
         <div
           className="inline-block px-6 py-3 font-medium"
           style={{
-            backgroundColor: colors.lightYellow,
-            color: colors.orange,
+            backgroundColor: colors.lightBlue,
+            color: colors.blue,
             borderRadius: '6px'
           }}
         >
@@ -108,6 +196,9 @@ const BadgesTab = ({ walletAddress }: BadgesTabProps) => {
     );
   }
 
+  const totalBadges = groupedBadges.reduce((sum, group) => sum + group.badges.length, 0);
+  const totalPractice = groupedBadges.reduce((sum, group) => sum + group.practiceAttempts.length, 0);
+
   return (
     <div>
       <div
@@ -115,100 +206,275 @@ const BadgesTab = ({ walletAddress }: BadgesTabProps) => {
         style={{ borderRadius: '8px' }}
       >
         <h3 className="text-xl font-bold mb-2" style={{ color: colors.darkRed }}>
-          Your Badge Collection
+          Your Achievements
         </h3>
-        <p className="text-gray-600">
-          You have earned {badges.length} badge{badges.length !== 1 ? 's' : ''}
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {badges.map((badge) => (
-          <div
-            key={badge.id}
-            className="bg-white shadow-md hover:shadow-xl transition-shadow duration-300 overflow-hidden"
-            style={{ borderRadius: '8px' }}
-          >
+        <div className="flex gap-6 mt-4">
+          <div className="flex items-center gap-3">
             <div
-              className="h-40 flex items-center justify-center"
+              className="w-12 h-12 flex items-center justify-center font-bold text-xl"
               style={{
-                background: `linear-gradient(135deg, ${colors.blue} 0%, ${colors.lightBlue} 100%)`
+                backgroundColor: colors.lightBlue,
+                color: colors.blue,
+                borderRadius: '8px'
               }}
             >
-              <div className="text-white text-center">
-                <div className="text-6xl mb-2">🏆</div>
-                <p className="font-bold text-lg">Badge</p>
-              </div>
+              {totalBadges}
             </div>
-
-            <div className="p-5">
-              <h4 className="font-bold text-lg mb-2" style={{ color: colors.darkRed }}>
-                {badge.test?.title || 'Test Badge'}
-              </h4>
-
-              {badge.test?.company && (
-                <p className="text-sm text-gray-500 mb-3">
-                  Issued by {badge.test.company}
-                </p>
-              )}
-
-              <div
-                className="p-3 mb-3"
-                style={{ backgroundColor: colors.cream, borderRadius: '6px' }}
-              >
-                <p className="text-xs text-gray-500 mb-1">Earned On</p>
-                <p className="font-mono text-sm" style={{ color: colors.blue }}>
-                  {new Date(badge.created_at).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </p>
-              </div>
-
-              {badge.nft_token_id && (
-                <div
-                  className="p-3 mb-3"
-                  style={{ backgroundColor: colors.lightMint, borderRadius: '6px' }}
-                >
-                  <p className="text-xs text-gray-500 mb-1">NFT Token ID</p>
-                  <p className="font-mono text-xs break-all" style={{ color: '#059669' }}>
-                    {badge.nft_token_id}
-                  </p>
-                </div>
-              )}
-
-              {badge.mint_tx_hash && (
-                <button
-                  className="w-full text-white font-semibold py-2 px-4 text-sm shadow-md hover:shadow-lg transition-all duration-200"
-                  style={{
-                    background: `linear-gradient(135deg, ${colors.blue} 0%, ${colors.lightBlue} 100%)`,
-                    borderRadius: '6px'
-                  }}
-                  onClick={() => {
-                    window.open(`https://stellar.expert/explorer/testnet/tx/${badge.mint_tx_hash}`, '_blank');
-                  }}
-                >
-                  View on Explorer
-                </button>
-              )}
-
-              {!badge.nft_token_id && (
-                <div
-                  className="p-3 text-center text-sm"
-                  style={{
-                    backgroundColor: colors.lightYellow,
-                    color: colors.orange,
-                    borderRadius: '6px'
-                  }}
-                >
-                  Badge minting pending
-                </div>
-              )}
+            <div>
+              <p className="text-sm text-gray-500">Earned Badges</p>
+              <p className="text-lg font-semibold" style={{ color: colors.blue }}>
+                NFT Certified
+              </p>
             </div>
           </div>
-        ))}
+          <div className="flex items-center gap-3">
+            <div
+              className="w-12 h-12 flex items-center justify-center font-bold text-xl"
+              style={{
+                backgroundColor: colors.lightYellow,
+                color: colors.orange,
+                borderRadius: '8px'
+              }}
+            >
+              {totalPractice}
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Practice Tests</p>
+              <p className="text-lg font-semibold" style={{ color: colors.orange }}>
+                Completed
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div
+              className="w-12 h-12 flex items-center justify-center font-bold text-xl"
+              style={{
+                backgroundColor: colors.lightMint,
+                color: colors.darkRed,
+                borderRadius: '8px'
+              }}
+            >
+              {groupedBadges.length}
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Companies</p>
+              <p className="text-lg font-semibold" style={{ color: colors.darkRed }}>
+                Organizations
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Grouped by Company */}
+      {groupedBadges.map((group) => {
+        const filter = filterByCompany[group.company] || 'all';
+        const filteredBadges = filter === 'practice' ? [] : group.badges;
+        const filteredPractice = filter === 'active' ? [] : group.practiceAttempts;
+        
+        return (
+          <div key={group.company} className="mb-8">
+            {/* Company Header */}
+            <div
+              className="p-4 mb-4 flex items-center justify-between"
+              style={{
+                background: `linear-gradient(135deg, ${colors.blue} 0%, ${colors.lightBlue} 100%)`,
+                borderRadius: '8px'
+              }}
+            >
+              <div>
+                <h3 className="text-2xl font-bold text-white">
+                  {group.company}
+                </h3>
+                <p className="text-sm text-white opacity-90">
+                  {group.badges.length} badge{group.badges.length !== 1 ? 's' : ''} earned
+                  {group.practiceAttempts.length > 0 && ` • ${group.practiceAttempts.length} practice test${group.practiceAttempts.length !== 1 ? 's' : ''} passed`}
+                </p>
+              </div>
+              
+              {/* Filter Dropdown */}
+              <select
+                value={filter}
+                onChange={(e) => setFilterByCompany({
+                  ...filterByCompany,
+                  [group.company]: e.target.value as 'all' | 'active' | 'practice'
+                })}
+                className="px-4 py-2 font-medium cursor-pointer"
+                style={{
+                  backgroundColor: 'white',
+                  color: colors.blue,
+                  borderRadius: '6px',
+                  border: 'none',
+                  outline: 'none'
+                }}
+              >
+                <option value="all">All Tests</option>
+                <option value="active">Active Only</option>
+                <option value="practice">Practice Only</option>
+              </select>
+            </div>
+
+            {/* Badges Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Earned Badges */}
+              {filteredBadges.map((badge) => (
+              <div
+                key={badge.id}
+                className="bg-white shadow-md hover:shadow-xl transition-shadow duration-300 overflow-hidden"
+                style={{ borderRadius: '8px', border: `2px solid ${colors.lightBlue}` }}
+              >
+                <div
+                  className="h-40 flex items-center justify-center"
+                  style={{
+                    background: `linear-gradient(135deg, ${colors.blue} 0%, ${colors.lightBlue} 100%)`
+                  }}
+                >
+                  <div className="text-white text-center">
+                    <div className="text-4xl font-bold mb-2">NFT BADGE</div>
+                    <p className="font-semibold text-sm">Certified Achievement</p>
+                  </div>
+                </div>
+
+                <div className="p-5">
+                  <h4 className="font-bold text-lg mb-2" style={{ color: colors.darkRed }}>
+                    {badge.test?.title || 'Test Badge'}
+                  </h4>
+
+                  <div
+                    className="p-3 mb-3"
+                    style={{ backgroundColor: colors.cream, borderRadius: '6px' }}
+                  >
+                    <p className="text-xs text-gray-500 mb-1">Earned On</p>
+                    <p className="font-mono text-sm" style={{ color: colors.blue }}>
+                      {new Date(badge.created_at).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </p>
+                  </div>
+
+                  {badge.nft_token_id && (
+                    <div
+                      className="p-3 mb-3"
+                      style={{ backgroundColor: colors.lightMint, borderRadius: '6px' }}
+                    >
+                      <p className="text-xs text-gray-500 mb-1">NFT Token ID</p>
+                      <p className="font-mono text-xs break-all" style={{ color: '#059669' }}>
+                        {badge.nft_token_id}
+                      </p>
+                    </div>
+                  )}
+
+                  {badge.metadata_url && (
+                    <div
+                      className="p-3 mb-3"
+                      style={{ backgroundColor: colors.lightBlue, borderRadius: '6px' }}
+                    >
+                      <p className="text-xs text-gray-500 mb-1">Metadata URI</p>
+                      <p className="font-mono text-xs break-all" style={{ color: colors.blue }}>
+                        {badge.metadata_url}
+                      </p>
+                    </div>
+                  )}
+
+                  {badge.mint_tx_hash && (
+                    <button
+                      className="w-full text-white font-semibold py-2 px-4 text-sm shadow-md hover:shadow-lg transition-all duration-200 mb-2"
+                      style={{
+                        background: `linear-gradient(135deg, ${colors.blue} 0%, ${colors.lightBlue} 100%)`,
+                        borderRadius: '6px'
+                      }}
+                      onClick={() => {
+                        window.open(`https://stellar.expert/explorer/testnet/tx/${badge.mint_tx_hash}`, '_blank');
+                      }}
+                    >
+                      View on Stellar Explorer
+                    </button>
+                  )}
+
+                  {badge.metadata_url && (
+                    <button
+                      className="w-full text-gray-700 font-semibold py-2 px-4 text-sm border-2 hover:bg-gray-50 transition-all duration-200"
+                      style={{
+                        borderColor: colors.blue,
+                        borderRadius: '6px'
+                      }}
+                      onClick={() => {
+                        window.open(badge.metadata_url!, '_blank');
+                      }}
+                    >
+                      View Metadata
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {/* Practice Attempts */}
+            {filteredPractice.map((attempt) => (
+              <div
+                key={attempt.id}
+                className="bg-white shadow-md hover:shadow-xl transition-shadow duration-300 overflow-hidden"
+                style={{ borderRadius: '8px', border: `2px dashed ${colors.orange}` }}
+              >
+                <div
+                  className="h-40 flex items-center justify-center"
+                  style={{
+                    background: `linear-gradient(135deg, ${colors.orange} 0%, ${colors.lightYellow} 100%)`
+                  }}
+                >
+                  <div className="text-white text-center">
+                    <div className="text-4xl font-bold mb-2">PRACTICE</div>
+                    <p className="font-semibold text-sm">Test Completed</p>
+                  </div>
+                </div>
+
+                <div className="p-5">
+                  <h4 className="font-bold text-lg mb-2" style={{ color: colors.orange }}>
+                    {attempt.test?.title || 'Practice Test'}
+                  </h4>
+
+                  <div
+                    className="p-3 mb-3"
+                    style={{ backgroundColor: colors.cream, borderRadius: '6px' }}
+                  >
+                    <p className="text-xs text-gray-500 mb-1">Completed On</p>
+                    <p className="font-mono text-sm" style={{ color: colors.orange }}>
+                      {new Date(attempt.created_at).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </p>
+                  </div>
+
+                  <div
+                    className="p-3 mb-3"
+                    style={{ backgroundColor: colors.lightMint, borderRadius: '6px' }}
+                  >
+                    <p className="text-xs text-gray-500 mb-1">Score</p>
+                    <p className="font-mono text-sm font-bold" style={{ color: '#059669' }}>
+                      {attempt.percentage}%
+                    </p>
+                  </div>
+
+                  <div
+                    className="p-3"
+                    style={{ backgroundColor: colors.lightYellow, borderRadius: '6px' }}
+                  >
+                    <p className="text-xs text-gray-700">
+                      <strong>Practice Mode:</strong> This test was completed after it ended.
+                      No NFT badge is awarded for practice attempts.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+      })}
     </div>
   );
 };

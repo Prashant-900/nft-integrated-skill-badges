@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { colors } from '../config/colors';
 import EarnTab from './EarnTab';
 import BadgesTab from './BadgesTab';
 import CreateTestTab from './CreateTestTab';
 import MyTestsTab from './MyTestsTab';
+import TakeTestTab from './TakeTestTab';
 
 interface User {
   id: string;
@@ -13,13 +14,15 @@ interface User {
   last_login: string;
 }
 
-type MenuItem = 'profile' | 'earn' | 'badges' | 'mytests' | 'create';
+type MenuItem = 'profile' | 'earn' | 'badges' | 'mytests' | 'create' | 'taketest';
 
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
   const [account, setAccount] = useState<string>('');
   const [activeMenu, setActiveMenu] = useState<MenuItem>('profile');
+  const [selectedTestId, setSelectedTestId] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { testId } = useParams<{ testId?: string }>();
 
   useEffect(() => {
     // Check if user is authenticated
@@ -35,6 +38,12 @@ const Dashboard = () => {
     setUser(JSON.parse(savedUser));
     setAccount(savedAddress);
 
+    // If testId is in URL, set it and show test
+    if (testId) {
+      setSelectedTestId(testId);
+      setActiveMenu('taketest');
+    }
+
     // Listen for account changes
     const handleAccountChange = (accounts: string[]) => handleAccountsChanged(accounts);
     
@@ -47,7 +56,7 @@ const Dashboard = () => {
         window.ethereum.removeListener('accountsChanged', handleAccountChange);
       }
     };
-  }, [navigate]);
+  }, [navigate, testId]);
 
   const handleAccountsChanged = (accounts: string[]) => {
     if (accounts.length === 0) {
@@ -67,6 +76,16 @@ const Dashboard = () => {
 
   const formatAddress = (address: string) => {
     return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+  };
+
+  const handleTakeTest = (testId: string) => {
+    navigate(`/test/${testId}`);
+  };
+
+  const handleBackFromTest = () => {
+    setSelectedTestId(null);
+    setActiveMenu('earn');
+    navigate('/dashboard');
   };
 
   if (!user) {
@@ -346,13 +365,21 @@ const Dashboard = () => {
             </>
           )}
 
-          {activeMenu === 'earn' && <EarnTab walletAddress={account} />}
+          {activeMenu === 'earn' && <EarnTab walletAddress={account} onTakeTest={handleTakeTest} />}
 
           {activeMenu === 'badges' && <BadgesTab walletAddress={account} />}
 
           {activeMenu === 'mytests' && <MyTestsTab walletAddress={account} />}
 
           {activeMenu === 'create' && <CreateTestTab walletAddress={account} />}
+
+          {activeMenu === 'taketest' && selectedTestId && (
+            <TakeTestTab 
+              testId={selectedTestId} 
+              walletAddress={account} 
+              onBack={handleBackFromTest}
+            />
+          )}
         </div>
       </main>
     </div>

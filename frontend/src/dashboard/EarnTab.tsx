@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { colors } from '../config/colors';
 import { supabase, type Test } from '../config/supabase';
+import { logContractInfo } from '../utils/sorobanSimple';
 
 interface EarnTabProps {
   walletAddress: string;
+  onTakeTest: (testId: string) => void;
 }
 
-const EarnTab = ({ walletAddress }: EarnTabProps) => {
+const EarnTab = ({ walletAddress, onTakeTest }: EarnTabProps) => {
   const [activeTests, setActiveTests] = useState<Test[]>([]);
   const [upcomingTests, setUpcomingTests] = useState<Test[]>([]);
   const [previousTests, setPreviousTests] = useState<Test[]>([]);
@@ -19,6 +21,8 @@ const EarnTab = ({ walletAddress }: EarnTabProps) => {
 
   useEffect(() => {
     fetchTests();
+    // Log contract info on component mount
+    logContractInfo();
   }, []);
 
   useEffect(() => {
@@ -97,6 +101,7 @@ const EarnTab = ({ walletAddress }: EarnTabProps) => {
       setFilteredPreviousTests(topPrevious);
 
       console.log(`📊 Found ${active.length} active, ${upcoming.length} upcoming, and ${topPrevious.length} previous tests (showing top 20)`);
+      console.log(`👤 Current user wallet: ${walletAddress}`);
     } catch (err: any) {
       console.error('Error fetching tests:', err);
       setError(err.message || 'Failed to load tests');
@@ -286,14 +291,12 @@ const EarnTab = ({ walletAddress }: EarnTabProps) => {
           }}
           onClick={() => {
             if (status === 'active') {
-              // TODO: Navigate to test page
-              alert(`Taking test: ${test.title}\nNote: You can earn a badge by passing!`);
+              onTakeTest(test.id);
             } else if (status === 'upcoming') {
               // TODO: Register for test
               alert(`Register for test: ${test.title}`);
             } else {
-              // TODO: Navigate to test page (practice mode)
-              alert(`Taking test: ${test.title}\nNote: This test has ended. You can take it for practice, but no badge will be awarded.`);
+              onTakeTest(test.id);
             }
           }}
         >
