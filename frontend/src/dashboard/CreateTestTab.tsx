@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { colors } from '../config/colors';
 import { supabase } from '../config/supabase';
+import { registerTestOnChain, generateTestMetadataUri, getContractExplorerUrl, CONTRACT_IDS } from '../utils/sorobanSimple';
 
 interface Question {
   question_text: string;
@@ -80,7 +81,7 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
     try {
       setLoading(true);
 
-      // Insert test
+      // Insert test into Supabase
       const { data: testData, error: testError } = await supabase
         .from('tests')
         .insert([{
@@ -110,7 +111,33 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
 
       if (questionsError) throw questionsError;
 
-      setSuccess('Test created successfully!');
+      // Register test on Stellar blockchain
+      try {
+        console.log('🚀 Registering test on Stellar blockchain...');
+        const metadataUri = generateTestMetadataUri(testData.id, testData);
+        const blockchainResult = await registerTestOnChain(
+          testData.id,
+          walletAddress,
+          metadataUri
+        );
+
+        console.log('✅ Test registered on blockchain:', blockchainResult);
+        console.log(`📝 View on Stellar Explorer: ${getContractExplorerUrl(CONTRACT_IDS.TEST_REGISTRY!)}`);
+
+        // Update test with blockchain metadata
+        await supabase
+          .from('tests')
+          .update({
+            metadata_cid: metadataUri,
+            // You could also store the transaction hash if you add a column
+          })
+          .eq('id', testData.id);
+
+        setSuccess(`Test created successfully and registered on Stellar blockchain! Transaction: ${blockchainResult.txHash}`);
+      } catch (blockchainError: any) {
+        console.error('⚠️ Failed to register on blockchain:', blockchainError);
+        setSuccess('Test created successfully in database (blockchain registration failed - you can retry later)');
+      }
 
       // Reset form
       setTitle('');
