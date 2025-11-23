@@ -105,11 +105,21 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
         ...q
       }));
 
+      console.log('=== INSERTING QUESTIONS ===');
+      console.log('Test ID:', testData.id);
+      console.log('Questions to insert:', questionsToInsert.length);
+      console.log('Questions data:', questionsToInsert);
+
       const { error: questionsError } = await supabase
         .from('questions')
         .insert(questionsToInsert);
 
-      if (questionsError) throw questionsError;
+      if (questionsError) {
+        console.error('Error inserting questions:', questionsError);
+        throw questionsError;
+      }
+
+      console.log('✅ Questions inserted successfully');
 
       // Register test on Stellar blockchain
       try {

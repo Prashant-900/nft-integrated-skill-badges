@@ -79,7 +79,7 @@ const BadgesTab = ({ walletAddress }: BadgesTabProps) => {
           test: testsData?.find(t => t.id === badge.test_id)
         }));
 
-        // Show ALL attempts as practice tests (badges are shown separately)
+        // Show ALL attempts (including those that earned badges)
         const practiceAttemptsWithTests: PracticeAttempt[] = (attemptsData || [])
           .map(attempt => ({
             ...attempt,
@@ -87,8 +87,8 @@ const BadgesTab = ({ walletAddress }: BadgesTabProps) => {
           }));
 
         console.log('Total attempts:', attemptsData?.length);
-        console.log('Practice attempts (ALL):', practiceAttemptsWithTests.length);
-        console.log('Practice attempts details:', practiceAttemptsWithTests);
+        console.log('All attempts shown:', practiceAttemptsWithTests.length);
+        console.log('Attempts details:', practiceAttemptsWithTests);
         console.log('Badges:', badgesWithTests.length);
 
         // Group by company
@@ -346,10 +346,12 @@ const BadgesTab = ({ walletAddress }: BadgesTabProps) => {
                   >
                     <p className="text-xs text-gray-500 mb-1">Earned On</p>
                     <p className="font-mono text-sm" style={{ color: colors.blue }}>
-                      {new Date(badge.created_at).toLocaleDateString('en-US', {
+                      {new Date(badge.created_at).toLocaleString('en-US', {
                         year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
+                        month: 'short',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit'
                       })}
                     </p>
                   </div>
@@ -441,10 +443,12 @@ const BadgesTab = ({ walletAddress }: BadgesTabProps) => {
                   >
                     <p className="text-xs text-gray-500 mb-1">Completed On</p>
                     <p className="font-mono text-sm" style={{ color: colors.orange }}>
-                      {new Date(attempt.created_at).toLocaleDateString('en-US', {
+                      {new Date(attempt.created_at).toLocaleString('en-US', {
                         year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
+                        month: 'short',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit'
                       })}
                     </p>
                   </div>

@@ -129,9 +129,16 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
       const { data: questionsData, error: questionsError } = await supabase
         .from('questions')
         .select('*')
-        .eq('test_id', testId);
+        .eq('test_id', testId)
+        .order('created_at', { ascending: true });
 
       if (questionsError) throw questionsError;
+      
+      console.log('=== QUESTIONS DEBUG ===');
+      console.log('Test ID:', testId);
+      console.log('Questions fetched:', questionsData?.length || 0);
+      console.log('Questions data:', questionsData);
+      
       setQuestions(questionsData || []);
 
       // Update view count
@@ -240,10 +247,12 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
         } else if (badgeData) {
           // Auto-mint the badge NFT immediately
           try {
-            const metadataUri = generateBadgeMetadataUri(
+            const metadataUri = await generateBadgeMetadataUri(
               testId,
               walletAddress,
-              test!.title
+              test!.title,
+              score,
+              totalScore
             );
 
             const mintResult = await mintBadgeNFT(
@@ -343,9 +352,21 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
           <h3 className="text-2xl font-bold mb-3" style={{ color: colors.darkRed }}>
             No Questions Available
           </h3>
-          <p className="text-gray-600 mb-6">
+          <p className="text-gray-600 mb-4">
             This test doesn't have any questions yet.
           </p>
+          {test && (
+            <div className="text-sm text-gray-500 bg-gray-50 p-4 rounded-md mb-4">
+              <p><strong>Test:</strong> {test.title}</p>
+              <p><strong>Test ID:</strong> {testId}</p>
+              <p className="mt-2 text-left">
+                <strong>Troubleshooting:</strong>
+                <br />• Check if questions exist in the database for this test
+                <br />• Ensure the test_id in the questions table matches: {testId}
+                <br />• Verify questions table has data with: SELECT * FROM questions WHERE test_id = '{testId}'
+              </p>
+            </div>
+          )}
         </div>
         <button
           onClick={onBack}

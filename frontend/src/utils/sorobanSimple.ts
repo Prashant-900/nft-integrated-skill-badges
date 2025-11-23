@@ -176,13 +176,66 @@ export const generateTestMetadataUri = (testId: string, _testData?: any): string
 };
 
 /**
- * Helper to generate metadata URI for badges
+ * Helper to generate and upload metadata for badges
  */
-export const generateBadgeMetadataUri = (testId: string, walletAddress: string, testTitle?: string): string => {
-  // In production, this would upload to IPFS or Arweave
-  // For now, we'll use a Supabase-based URL
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  return `${supabaseUrl}/storage/v1/object/public/badge-metadata/${testId}_${walletAddress}.json`;
+export const generateBadgeMetadataUri = async (
+  testId: string, 
+  walletAddress: string, 
+  testTitle?: string,
+  score?: number,
+  totalScore?: number
+): Promise<string> => {
+  try {
+    // Import supabase dynamically to avoid circular dependency
+    const { supabase } = await import('../config/supabase');
+    
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const fileName = `${testId}_${walletAddress}.json`;
+    
+    // Create metadata object
+    const metadata = {
+      name: `${testTitle || 'Skill Badge'} - Achievement`,
+      description: `Badge earned for completing ${testTitle || 'the test'}`,
+      image: `${supabaseUrl}/storage/v1/object/public/badge-metadata/badge-icon.png`,
+      attributes: [
+        {
+          trait_type: 'Test ID',
+          value: testId
+        },
+        {
+          trait_type: 'Wallet Address',
+          value: walletAddress
+        },
+        {
+          trait_type: 'Score',
+          value: score ? `${score}/${totalScore}` : 'Passed'
+        },
+        {
+          trait_type: 'Issued Date',
+          value: new Date().toISOString()
+        }
+      ]
+    };
+
+    // Upload metadata to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('badge-metadata')
+      .upload(fileName, JSON.stringify(metadata, null, 2), {
+        contentType: 'application/json',
+        upsert: true // Overwrite if exists
+      });
+
+    if (uploadError && !uploadError.message.includes('already exists')) {
+      console.error('Error uploading badge metadata:', uploadError);
+    }
+
+    return `${supabaseUrl}/storage/v1/object/public/badge-metadata/${fileName}`;
+  } catch (error) {
+    console.error('Error generating badge metadata:', error);
+    // Fallback to simple URL if upload fails
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    return `${supabaseUrl}/storage/v1/object/public/badge-metadata/${testId}_${walletAddress}.json`;
+  }
 };
 
 /**
