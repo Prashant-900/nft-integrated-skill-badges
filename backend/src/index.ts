@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes';
+import blockchainRoutes from './routes/blockchainRoutes';
 
 dotenv.config();
 
@@ -14,6 +15,7 @@ app.use(express.json());
 
 // Routes
 app.use('/api', authRoutes);
+app.use('/api', blockchainRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

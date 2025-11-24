@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../config/supabase';
 import { colors } from '../config/colors';
+import { Button } from '../components/ui/Button';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
+import { Input } from '../components/ui/Input';
+import { Label } from '../components/ui/Label';
 
 interface CustomBadge {
   id: string;
@@ -164,12 +168,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userId }) => {
     }
   };
 
-  const handleDeleteBadge = async (badgeId: string, svgUrl: string, isDefault?: boolean) => {
-    if (isDefault) {
-      setError('Cannot delete default badges');
-      return;
-    }
-
+  const handleDeleteBadge = async (badgeId: string, svgUrl: string) => {
     if (!confirm('Are you sure you want to delete this badge?')) return;
 
     try {
@@ -205,205 +204,200 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userId }) => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto space-y-4">
       {/* Create Badge Section */}
-      <div
-        className="bg-white shadow-md p-6 mb-6"
-        style={{ borderRadius: '8px', border: `1px solid ${colors.lightBlue}` }}
-      >
-        <h3 className="text-xl font-bold mb-4" style={{ color: colors.darkRed }}>
-          Create Custom Badge
-        </h3>
-
-        {error && (
-          <div
-            className="p-4 mb-4 border"
-            style={{
-              backgroundColor: colors.lightPink,
-              borderColor: colors.rose,
-              color: colors.darkRed,
-              borderRadius: '6px'
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div
-            className="p-4 mb-4 border"
-            style={{
-              backgroundColor: colors.lightMint,
-              borderColor: colors.blue,
-              color: colors.blue,
-              borderRadius: '6px'
-            }}
-          >
-            {success}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          {/* Badge Name Input */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Badge Name <span style={{ color: colors.rose }}>*</span>
-            </label>
-            <input
-              type="text"
-              value={badgeName}
-              onChange={(e) => setBadgeName(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-blue-400 transition-colors"
-              style={{ borderRadius: '6px', backgroundColor: colors.cream }}
-              placeholder="e.g., Python Expert Badge"
-              maxLength={100}
-            />
-          </div>
-
-          {/* SVG File Upload */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Upload SVG File <span style={{ color: colors.rose }}>*</span>
-            </label>
-            <input
-              id="svg-upload"
-              type="file"
-              accept=".svg,image/svg+xml"
-              onChange={handleFileChange}
-              className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-blue-400 transition-colors"
-              style={{ borderRadius: '6px', backgroundColor: colors.cream }}
-            />
-            <p className="text-xs text-gray-500 mt-1">Max size: 1MB</p>
-          </div>
-        </div>
-
-        {/* SVG Preview */}
-        {svgPreview && (
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Preview
-            </label>
+      <Card style={{ backgroundColor: colors.purpleLight }} className="border-2 shadow-[-4px_-4px_0px_0px_rgba(0,0,0,1)] border-black">
+        <CardHeader>
+          <CardTitle>Create Custom Badge</CardTitle>
+          <CardDescription>Design your own SVG badge to mint as NFT</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {error && (
             <div
-              className="p-4 flex items-center justify-center"
-              style={{ backgroundColor: colors.cream, borderRadius: '6px', minHeight: '200px' }}
+              className="p-3 rounded-base border-2 font-medium shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+              style={{
+                backgroundColor: colors.redLight,
+                borderColor: colors.red,
+                color: colors.red,
+              }}
             >
-              <img
-                src={svgPreview}
-                alt="SVG Preview"
-                className="max-w-full max-h-64"
-                style={{ objectFit: 'contain' }}
+              {error}
+            </div>
+          )}
+
+          {success && (
+            <div
+              className="p-3 rounded-base border-2 font-medium shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+              style={{
+                backgroundColor: colors.greenLight,
+                borderColor: colors.green,
+                color: colors.green,
+              }}
+            >
+              {success}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Badge Name Input */}
+            <div className="space-y-2">
+              <Label>
+                Badge Name <span style={{ color: colors.red }}>*</span>
+              </Label>
+              <Input
+                type="text"
+                value={badgeName}
+                onChange={(e) => setBadgeName(e.target.value)}
+                placeholder="e.g., Python Expert Badge"
+                maxLength={100}
               />
             </div>
-          </div>
-        )}
 
-        {/* Upload Button */}
-        <button
-          onClick={handleUploadBadge}
-          disabled={uploading || !badgeName.trim() || !svgFile}
-          className="w-full text-white font-medium py-2.5 px-4 shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{
-            backgroundColor: colors.blue,
-            borderRadius: '6px'
-          }}
-        >
-          {uploading ? 'Uploading...' : 'Create Badge'}
-        </button>
-      </div>
+            {/* SVG File Upload */}
+            <div className="space-y-2">
+              <Label>
+                Upload SVG File <span style={{ color: colors.red }}>*</span>
+              </Label>
+              <Input
+                id="svg-upload"
+                type="file"
+                accept=".svg,image/svg+xml"
+                onChange={handleFileChange}
+              />
+              <p className="text-xs text-gray-500">Max size: 1MB</p>
+            </div>
+          </div>
+
+          {/* SVG Preview */}
+          {svgPreview && (
+            <div className="space-y-2">
+              <Label>Preview</Label>
+              <div
+                className="p-4 rounded-base border-2 border-black flex items-center justify-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] transition-all duration-150"
+                style={{ backgroundColor: colors.white, minHeight: '180px' }}
+              >
+                <img
+                  src={svgPreview}
+                  alt="SVG Preview"
+                  className="max-w-full max-h-56"
+                  style={{ objectFit: 'contain' }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Upload Button */}
+          <Button
+            onClick={handleUploadBadge}
+            disabled={uploading || !badgeName.trim() || !svgFile}
+            className="w-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:shadow-[-4px_-4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[8px] active:translate-y-[8px] transition-all duration-150"
+            variant="default"
+          >
+            {uploading ? 'Uploading...' : 'Create Badge'}
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* My Badges List */}
-      <div
-        className="bg-white shadow-md p-6"
-        style={{ borderRadius: '8px' }}
-      >
-        <h3 className="text-xl font-bold mb-4" style={{ color: colors.darkRed }}>
-          My Custom Badges ({customBadges.length})
-        </h3>
-
-        {loading && customBadges.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            Loading badges...
-          </div>
-        ) : customBadges.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            No custom badges yet. Create your first badge above!
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {customBadges.map((badge) => (
-              <div
-                key={badge.id}
-                className="bg-white border shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden"
-                style={{ borderRadius: '6px', borderColor: colors.lightBlue }}
-              >
-                {/* Badge Image */}
-                <div
-                  className="h-48 flex items-center justify-center p-4"
-                  style={{ backgroundColor: colors.cream }}
-                >
-                  <img
-                    src={badge.svg_url}
-                    alt={badge.badge_name}
-                    className="max-w-full max-h-full"
-                    style={{ objectFit: 'contain' }}
-                  />
-                </div>
-
-                {/* Badge Info */}
-                <div className="p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <h4 className="font-bold text-lg" style={{ color: colors.darkRed }}>
-                      {badge.badge_name}
-                    </h4>
-                    {badge.is_default && (
-                      <span 
-                        className="text-xs font-medium px-2 py-1"
-                        style={{ 
-                          backgroundColor: colors.lightMint, 
-                          color: colors.blue,
-                          borderRadius: '4px'
-                        }}
-                      >
-                        Default
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Created: {new Date(badge.created_at).toLocaleDateString()}
-                  </p>
-
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => window.open(badge.svg_url, '_blank')}
-                      className="flex-1 text-white font-medium py-2 px-3 text-sm shadow-sm hover:shadow-md transition-all"
-                      style={{
-                        backgroundColor: colors.blue,
-                        borderRadius: '6px'
-                      }}
+      <Card style={{ backgroundColor: colors.yellowLight }} className="border-2 shadow-[-4px_-4px_0px_0px_rgba(0,0,0,1)] border-black">
+        <CardHeader>
+          <CardTitle>My Custom Badges ({customBadges.length})</CardTitle>
+          <CardDescription>Your personalized NFT badge collection</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading && customBadges.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              Loading badges...
+            </div>
+          ) : customBadges.length === 0 ? (
+            <div className="text-center py-8 space-y-2">
+              <h4 className="text-lg font-bold">No custom badges yet</h4>
+              <p className="text-gray-600 text-sm">Create your first badge above!</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {customBadges.map((badge, index) => {
+                const badgeColors = [
+                  colors.blueLight,
+                  colors.greenLight,
+                  colors.orangeLight,
+                  colors.pinkLight,
+                  colors.cyanLight,
+                  colors.limeLight
+                ];
+                const bgColor = badgeColors[index % badgeColors.length];
+                
+                return (
+                  <Card
+                    key={badge.id}
+                    className="overflow-hidden hover:translate-x-[2px] hover:translate-y-[2px] transition-all duration-150 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
+                    style={{ backgroundColor: bgColor }}
+                  >
+                    {/* Badge Image */}
+                    <div
+                      className="h-32 flex items-center justify-center p-3 border-b-2 border-black"
+                      style={{ backgroundColor: colors.white }}
                     >
-                      View
-                    </button>
-                    {!badge.is_default && (
-                      <button
-                        onClick={() => handleDeleteBadge(badge.id, badge.svg_url, badge.is_default)}
-                        disabled={loading}
-                        className="flex-1 text-white font-medium py-2 px-3 text-sm shadow-sm hover:shadow-md transition-all disabled:opacity-50"
-                        style={{
-                          backgroundColor: colors.rose,
-                          borderRadius: '6px'
-                        }}
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                      <img
+                        src={badge.svg_url}
+                        alt={badge.badge_name}
+                        className="max-w-full max-h-full"
+                        style={{ objectFit: 'contain' }}
+                      />
+                    </div>
+
+                    {/* Badge Info */}
+                    <CardContent className="space-y-1.5 p-2.5">
+                      <div className="flex items-start justify-between">
+                        <h4 className="font-bold text-sm leading-tight">
+                          {badge.badge_name}
+                        </h4>
+                        {badge.is_default && (
+                          <span
+                            className="text-xs font-bold px-1.5 py-0.5 rounded-base border-2 border-black"
+                            style={{
+                              backgroundColor: colors.greenLight,
+                              color: colors.green,
+                            }}
+                          >
+                            Default
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-600">
+                        Created: {new Date(badge.created_at).toLocaleDateString()}
+                      </p>
+
+                      {/* Actions */}
+                      <div className="flex gap-1.5">
+                        <Button
+                          onClick={() => window.open(badge.svg_url, '_blank')}
+                          className="flex-1 text-xs py-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-[-2px_-2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[4px] active:translate-y-[4px] transition-all duration-150"
+                          variant="default"
+                        >
+                          View
+                        </Button>
+                        <Button
+                          onClick={() => handleDeleteBadge(badge.id, badge.svg_url)}
+                          disabled={loading}
+                          className="flex-1 text-xs py-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-[-2px_-2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[4px] active:translate-y-[4px] transition-all duration-150"
+                          style={{
+                            backgroundColor: colors.red,
+                            borderColor: colors.red,
+                            color: colors.white,
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };

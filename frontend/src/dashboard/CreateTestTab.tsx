@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react';
 import { colors } from '../config/colors';
 import { supabase } from '../config/supabase';
-import { registerTestOnChain, generateTestMetadataUri, getContractExplorerUrl, CONTRACT_IDS } from '../utils/sorobanSimple';
+import { getContractExplorerUrl, CONTRACT_IDS } from '../utils/sorobanSimple';
+import { registerTestViaBackend } from '../utils/backendApi';
+import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { Label } from '../components/ui/Label';
 
 interface Question {
   question_text: string;
@@ -138,14 +143,27 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
         setError(`Please fill in all ${optionsNeeded} option fields`);
         return;
       }
+
+      // Validate correct_answer is within valid range
+      const validAnswers = optionsNeeded === 2 ? ['A', 'B'] : optionsNeeded === 3 ? ['A', 'B', 'C'] : ['A', 'B', 'C', 'D'];
+      if (!validAnswers.includes(currentQuestion.correct_answer)) {
+        setError(`Correct answer must be one of: ${validAnswers.join(', ')}`);
+        return;
+      }
     } else if (currentQuestion.question_type === 'true_false') {
-      if (!currentQuestion.correct_answer || !['true', 'false'].includes(currentQuestion.correct_answer.toLowerCase())) {
+      // For true/false, correct_answer should be 'A' (True) or 'B' (False)
+      if (!['A', 'B'].includes(currentQuestion.correct_answer)) {
         setError('Please select True or False as the correct answer');
         return;
       }
     } else if (currentQuestion.question_type === 'one_word') {
-      if (!currentQuestion.correct_answer) {
+      // For one_word, option_a should contain the answer and correct_answer should be 'A'
+      if (!currentQuestion.option_a || !currentQuestion.option_a.trim()) {
         setError('Please fill in the correct answer');
+        return;
+      }
+      if (currentQuestion.correct_answer !== 'A') {
+        setError('One word answer must have correct_answer set to A');
         return;
       }
     }
@@ -196,6 +214,7 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
           description,
           company,
           difficulty: badgeType,
+          custom_badge_id: customBadgeId || null,
           start_time: new Date(startTime).toISOString(),
           end_time: new Date(endTime).toISOString(),
           pass_score: passScore,
@@ -228,11 +247,12 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
 
       console.log('✅ Questions inserted successfully');
 
-      // Register test on Stellar blockchain
+      // Register test on Stellar blockchain via backend
       try {
-        console.log('🚀 Registering test on Stellar blockchain...');
-        const metadataUri = generateTestMetadataUri(testData.id, testData);
-        const blockchainResult = await registerTestOnChain(
+        console.log('🚀 Registering test on Stellar blockchain via backend...');
+        const metadataUri = `${testData.id}.json`; // Simplified metadata reference
+        
+        const blockchainResult = await registerTestViaBackend(
           testData.id,
           walletAddress,
           metadataUri
@@ -250,7 +270,9 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
           })
           .eq('id', testData.id);
 
-        setSuccess(`Test created successfully and registered on Stellar blockchain! Transaction: ${blockchainResult.txHash}`);
+        console.log('✅ Blockchain metadata updated');
+        
+        setSuccess(`Test created successfully and registered on Stellar blockchain! Transaction: ${blockchainResult.data.txHash}`);
       } catch (blockchainError: any) {
         console.error('⚠️ Failed to register on blockchain:', blockchainError);
         setSuccess('Test created successfully in database (blockchain registration failed - you can retry later)');
@@ -276,68 +298,46 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
   return (
     <div className="max-w-4xl">
       {error && (
-        <div
-          className="p-5 mb-5 border-l-4 shadow-sm"
-          style={{
-            backgroundColor: colors.lightPink,
-            borderColor: colors.rose,
-            color: colors.darkRed,
-            borderRadius: '16px'
-          }}
-        >
-          <p className="font-medium">{error}</p>
-        </div>
+        <Card className="mb-4 border-4" style={{ backgroundColor: colors.pinkLight, borderColor: colors.red }}>
+          <CardContent className="py-4">
+            <p className="font-bold" style={{ color: colors.red }}>{error}</p>
+          </CardContent>
+        </Card>
       )}
 
       {success && (
-        <div
-          className="p-5 mb-5 border-l-4 shadow-sm"
-          style={{
-            backgroundColor: colors.lightMint,
-            borderColor: '#059669',
-            color: '#059669',
-            borderRadius: '16px'
-          }}
-        >
-          <p className="font-medium">{success}</p>
-        </div>
+        <Card className="mb-4 border-4" style={{ backgroundColor: colors.cyanLight, borderColor: colors.cyan }}>
+          <CardContent className="py-4">
+            <p className="font-bold" style={{ color: colors.cyan }}>{success}</p>
+          </CardContent>
+        </Card>
       )}
 
       <form onSubmit={handleSubmit}>
         {/* Test Details */}
-        <div
-          className="bg-white shadow-sm p-6 mb-4"
-          style={{ borderRadius: '8px', border: `1px solid ${colors.lightBlue}` }}
-        >
-          <h3 className="text-xl font-bold mb-4" style={{ color: colors.darkRed }}>
-            Test Details
-          </h3>
-
-          <div className="space-y-4">
+        <Card className="mb-4 border-2 shadow-[-4px_-4px_0px_0px_rgba(0,0,0,1)]" style={{ backgroundColor: colors.blueLight, borderColor: '#000' }}>
+          <CardHeader>
+            <CardTitle style={{ color: colors.blue }}>Test Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Title <span style={{ color: colors.rose }}>*</span>
-              </label>
-              <input
+              <Label>Title *</Label>
+              <Input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-pink-400 transition-colors"
-                style={{ borderRadius: '6px', backgroundColor: colors.cream }}
                 placeholder="e.g., JavaScript Fundamentals"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Description
-              </label>
+              <Label>Description</Label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-pink-400 transition-colors"
-                style={{ borderRadius: '6px', backgroundColor: colors.cream }}
+                className="w-full px-4 py-3 border-2 border-border bg-background focus:outline-none focus:border-main transition-all duration-200"
+                style={{ borderRadius: '5px' }}
                 rows={3}
                 placeholder="Brief description of the test"
               />
@@ -345,29 +345,23 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Company/Organization
-                </label>
-                <input
+                <Label>Company/Organization</Label>
+                <Input
                   type="text"
                   value={company}
                   onChange={(e) => setCompany(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-pink-400 transition-colors"
-                  style={{ borderRadius: '6px', backgroundColor: colors.cream }}
                   placeholder="Your company name"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Badge Type
-                </label>
+                <Label>Badge Type</Label>
                 <div className="flex gap-2">
                   <select
                     value={customBadgeId}
                     onChange={(e) => setCustomBadgeId(e.target.value)}
-                    className="flex-1 px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-pink-400 transition-colors"
-                    style={{ borderRadius: '6px', backgroundColor: colors.cream }}
+                    className="flex-1 px-4 py-3 border-2 border-border bg-background focus:outline-none focus:border-main transition-all duration-200 font-heading"
+                    style={{ borderRadius: '5px' }}
                   >
                     <option value="">Select a badge</option>
                     {customBadges.map((badge) => (
@@ -376,18 +370,13 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
                       </option>
                     ))}
                   </select>
-                  <button
+                  <Button
                     type="button"
                     onClick={() => setShowBadgeManager(!showBadgeManager)}
-                    className="px-4 py-2.5 text-white font-medium shadow-sm hover:shadow-md transition-all"
-                    style={{
-                      backgroundColor: colors.rose,
-                      borderRadius: '6px'
-                    }}
-                    title="Manage Badges"
+                    variant="reverse"
                   >
                     {showBadgeManager ? 'Close' : 'Manage'}
-                  </button>
+                  </Button>
                 </div>
                 {customBadges.length === 0 && (
                   <p className="text-xs text-gray-500 mt-1">
@@ -399,67 +388,53 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
 
             {/* Badge Manager Section */}
             {showBadgeManager && customBadges.length > 0 && (
-              <div
-                className="p-4 mb-4"
-                style={{ backgroundColor: colors.cream, borderRadius: '6px', border: `1px solid ${colors.lightBlue}` }}
-              >
-                <h4 className="text-lg font-bold mb-3" style={{ color: colors.darkRed }}>
-                  Manage Badges
-                </h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {customBadges.map((badge) => (
-                    <div
-                      key={badge.id}
-                      className="bg-white p-3 border shadow-sm"
-                      style={{ borderRadius: '6px', borderColor: colors.lightBlue }}
-                    >
-                      <div
-                        className="h-24 flex items-center justify-center mb-2"
-                        style={{ backgroundColor: colors.cream, borderRadius: '4px' }}
-                      >
-                        <img
-                          src={badge.svg_url}
-                          alt={badge.badge_name}
-                          className="max-w-full max-h-full"
-                          style={{ objectFit: 'contain' }}
-                        />
-                      </div>
-                      <p className="text-xs font-medium text-center mb-1 truncate" style={{ color: colors.darkRed }}>
-                        {badge.badge_name}
-                      </p>
-                      {badge.is_default ? (
-                        <p className="text-xs text-center text-gray-400">Default</p>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteBadge(badge.id, badge.svg_url)}
-                          disabled={loading}
-                          className="w-full text-white font-medium py-1.5 px-2 text-xs shadow-sm hover:shadow-md transition-all disabled:opacity-50"
-                          style={{
-                            backgroundColor: colors.rose,
-                            borderRadius: '4px'
-                          }}
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <Card className="border-2 shadow-[-4px_-4px_0px_0px_rgba(0,0,0,1)]" style={{ backgroundColor: colors.purpleLight, borderColor: '#000' }}>
+                <CardHeader>
+                  <CardTitle style={{ color: colors.purple }}>Manage Badges</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {customBadges.map((badge) => (
+                      <Card key={badge.id} className="border-2 shadow-[-2px_-2px_0px_0px_rgba(0,0,0,0.5)]" style={{ borderColor: '#000' }}>
+                        <CardContent className="p-3">
+                          <div
+                            className="h-24 flex items-center justify-center mb-2 bg-background"
+                            style={{ borderRadius: '5px' }}
+                          >
+                            <img
+                              src={badge.svg_url}
+                              alt={badge.badge_name}
+                              className="max-w-full max-h-full"
+                              style={{ objectFit: 'contain' }}
+                            />
+                          </div>
+                          <p className="text-xs font-bold text-center mb-1 truncate" style={{ color: colors.purple }}>
+                            {badge.badge_name}
+                          </p>
+                          <Button
+                            type="button"
+                            onClick={() => handleDeleteBadge(badge.id, badge.svg_url)}
+                            disabled={loading}
+                            variant="reverse"
+                            className="w-full text-xs py-1.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-[-2px_-2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[4px] active:translate-y-[4px] transition-all duration-150"
+                          >
+                            Delete
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Pass Score (%) <span style={{ color: colors.rose }}>*</span>
-                </label>
-                <input
+                <Label>Pass Score (%) *</Label>
+                <Input
                   type="number"
                   value={passScore}
                   onChange={(e) => setPassScore(Number(e.target.value))}
-                  className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-pink-400 transition-colors"
-                  style={{ borderRadius: '6px', backgroundColor: colors.cream }}
                   min="0"
                   max="100"
                   required
@@ -467,65 +442,49 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Start Date <span style={{ color: colors.rose }}>*</span>
-                </label>
-                <input
+                <Label>Start Date *</Label>
+                <Input
                   type="datetime-local"
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-pink-400 transition-colors"
-                  style={{ borderRadius: '6px', backgroundColor: colors.cream }}
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  End Date <span style={{ color: colors.rose }}>*</span>
-                </label>
-                <input
+                <Label>End Date *</Label>
+                <Input
                   type="datetime-local"
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-pink-400 transition-colors"
-                  style={{ borderRadius: '6px', backgroundColor: colors.cream }}
                   required
                 />
               </div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
+
 
         {/* Add Question */}
-        <div
-          className="bg-white shadow-sm p-6 mb-4"
-          style={{ borderRadius: '8px', border: `1px solid ${colors.lightYellow}` }}
-        >
-          <h3 className="text-xl font-bold mb-4" style={{ color: colors.darkRed }}>
-            Add Question
-          </h3>
+        <Card className="mb-4 border-2 shadow-[-4px_-4px_0px_0px_rgba(0,0,0,1)]" style={{ backgroundColor: colors.cyanLight, borderColor: '#000' }}>
+          <CardHeader>
+            <CardTitle style={{ color: colors.cyan }}>Add Question</CardTitle>
+          </CardHeader>
 
-          <div className="space-y-4">
+          <CardContent className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Question Text
-              </label>
-              <input
+              <Label>Question Text</Label>
+              <Input
                 type="text"
                 value={currentQuestion.question_text}
                 onChange={(e) => setCurrentQuestion({ ...currentQuestion, question_text: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-yellow-400 transition-colors"
-                style={{ borderRadius: '6px', backgroundColor: colors.cream }}
                 placeholder="Enter your question"
               />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Question Type <span style={{ color: colors.rose }}>*</span>
-                </label>
+                <Label>Question Type *</Label>
                 <select
                   value={currentQuestion.question_type}
                   onChange={(e) => {
@@ -533,11 +492,17 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
                     setCurrentQuestion({
                       ...currentQuestion,
                       question_type: newType,
-                      correct_answer: newType === 'true_false' ? 'true' : newType === 'one_word' ? '' : 'A'
+                      // For all question types, correct_answer should be A, B, C, or D
+                      correct_answer: 'A',
+                      // For true_false, set option_a='True' and option_b='False'
+                      option_a: newType === 'true_false' ? 'True' : currentQuestion.option_a,
+                      option_b: newType === 'true_false' ? 'False' : currentQuestion.option_b,
+                      // Reset num_options to 4 when switching to multiple_choice
+                      num_options: newType === 'multiple_choice' ? 4 : currentQuestion.num_options
                     });
                   }}
-                  className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-pink-400 transition-colors"
-                  style={{ borderRadius: '6px', backgroundColor: colors.cream }}
+                  className="w-full px-4 py-3 border-2 border-border bg-background focus:outline-none focus:border-main transition-all duration-200 font-heading"
+                  style={{ borderRadius: '5px' }}
                 >
                   <option value="multiple_choice">Multiple Choice</option>
                   <option value="true_false">True/False</option>
@@ -547,20 +512,23 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
 
               {currentQuestion.question_type === 'multiple_choice' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Number of Options <span style={{ color: colors.rose }}>*</span>
-                  </label>
+                  <Label>Number of Options *</Label>
                   <select
                     value={currentQuestion.num_options || 4}
                     onChange={(e) => {
                       const newNum = parseInt(e.target.value) as 2 | 3 | 4;
+                      const validAnswers = newNum === 2 ? ['A', 'B'] : newNum === 3 ? ['A', 'B', 'C'] : ['A', 'B', 'C', 'D'];
+                      const currentAnswer = currentQuestion.correct_answer;
+                      
                       setCurrentQuestion({
                         ...currentQuestion,
-                        num_options: newNum
+                        num_options: newNum,
+                        // Reset correct_answer to 'A' if current answer is no longer valid
+                        correct_answer: validAnswers.includes(currentAnswer) ? currentAnswer : 'A'
                       });
                     }}
-                    className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-pink-400 transition-colors"
-                    style={{ borderRadius: '6px', backgroundColor: colors.cream }}
+                    className="w-full px-4 py-3 border-2 border-border bg-background focus:outline-none focus:border-main transition-all duration-200 font-heading"
+                    style={{ borderRadius: '5px' }}
                   >
                     <option value="2">2 Options</option>
                     <option value="3">3 Options</option>
@@ -574,44 +542,32 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Option A
-                    </label>
-                    <input
+                    <Label>Option A</Label>
+                    <Input
                       type="text"
                       value={currentQuestion.option_a}
                       onChange={(e) => setCurrentQuestion({ ...currentQuestion, option_a: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-blue-400 transition-colors"
-                      style={{ borderRadius: '6px' }}
                       placeholder="Option A"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Option B
-                    </label>
-                    <input
+                    <Label>Option B</Label>
+                    <Input
                       type="text"
                       value={currentQuestion.option_b}
                       onChange={(e) => setCurrentQuestion({ ...currentQuestion, option_b: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-blue-400 transition-colors"
-                      style={{ borderRadius: '6px' }}
                       placeholder="Option B"
                     />
                   </div>
 
                   {(currentQuestion.num_options || 4) >= 3 && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                        Option C
-                      </label>
-                      <input
+                      <Label>Option C</Label>
+                      <Input
                         type="text"
                         value={currentQuestion.option_c || ''}
                         onChange={(e) => setCurrentQuestion({ ...currentQuestion, option_c: e.target.value })}
-                        className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-blue-400 transition-colors"
-                        style={{ borderRadius: '6px' }}
                         placeholder="Option C"
                       />
                     </div>
@@ -619,15 +575,11 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
 
                   {(currentQuestion.num_options || 4) === 4 && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                        Option D
-                      </label>
-                      <input
+                      <Label>Option D</Label>
+                      <Input
                         type="text"
                         value={currentQuestion.option_d || ''}
                         onChange={(e) => setCurrentQuestion({ ...currentQuestion, option_d: e.target.value })}
-                        className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-blue-400 transition-colors"
-                        style={{ borderRadius: '6px' }}
                         placeholder="Option D"
                       />
                     </div>
@@ -636,14 +588,12 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Correct Answer
-                    </label>
+                    <Label>Correct Answer</Label>
                     <select
                       value={currentQuestion.correct_answer}
                       onChange={(e) => setCurrentQuestion({ ...currentQuestion, correct_answer: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-blue-400 transition-colors"
-                      style={{ borderRadius: '6px' }}
+                      className="w-full px-4 py-3 border-2 border-border bg-background focus:outline-none focus:border-main transition-all duration-200 font-heading"
+                      style={{ borderRadius: '5px' }}
                     >
                       <option value="A">A</option>
                       <option value="B">B</option>
@@ -653,15 +603,11 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Points
-                    </label>
-                    <input
+                    <Label>Points</Label>
+                    <Input
                       type="number"
                       value={currentQuestion.points}
                       onChange={(e) => setCurrentQuestion({ ...currentQuestion, points: Number(e.target.value) })}
-                      className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-blue-400 transition-colors"
-                      style={{ borderRadius: '6px' }}
                       min="1"
                     />
                   </div>
@@ -673,57 +619,43 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Correct Answer <span style={{ color: colors.rose }}>*</span>
-                    </label>
-                    <div className="flex gap-3">
-                      <button
+                    <Label>Correct Answer *</Label>
+                    <div className="flex gap-3 mt-2">
+                      <Button
                         type="button"
-                        onClick={() => setCurrentQuestion({ ...currentQuestion, correct_answer: 'true' })}
-                        className={`flex-1 py-2.5 px-4 font-medium transition-all ${
-                          currentQuestion.correct_answer === 'true'
-                            ? 'text-white shadow-sm'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
+                        onClick={() => setCurrentQuestion({ ...currentQuestion, correct_answer: 'A', option_a: 'True', option_b: 'False' })}
+                        variant={currentQuestion.correct_answer === 'A' ? 'default' : 'neutral'}
+                        className="flex-1"
                         style={{
-                          borderRadius: '6px',
-                          ...(currentQuestion.correct_answer === 'true' && {
-                            backgroundColor: colors.blue
-                          })
+                          backgroundColor: currentQuestion.correct_answer === 'A' ? colors.cyanLight : undefined,
+                          borderColor: currentQuestion.correct_answer === 'A' ? colors.cyan : undefined,
+                          color: currentQuestion.correct_answer === 'A' ? colors.cyan : undefined
                         }}
                       >
                         True
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
-                        onClick={() => setCurrentQuestion({ ...currentQuestion, correct_answer: 'false' })}
-                        className={`flex-1 py-2.5 px-4 font-medium transition-all ${
-                          currentQuestion.correct_answer === 'false'
-                            ? 'text-white shadow-sm'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
+                        onClick={() => setCurrentQuestion({ ...currentQuestion, correct_answer: 'B', option_a: 'True', option_b: 'False' })}
+                        variant={currentQuestion.correct_answer === 'B' ? 'default' : 'neutral'}
+                        className="flex-1"
                         style={{
-                          borderRadius: '6px',
-                          ...(currentQuestion.correct_answer === 'false' && {
-                            backgroundColor: colors.rose
-                          })
+                          backgroundColor: currentQuestion.correct_answer === 'B' ? colors.redLight : undefined,
+                          borderColor: currentQuestion.correct_answer === 'B' ? colors.red : undefined,
+                          color: currentQuestion.correct_answer === 'B' ? colors.red : undefined
                         }}
                       >
                         False
-                      </button>
+                      </Button>
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Points
-                    </label>
-                    <input
+                    <Label>Points</Label>
+                    <Input
                       type="number"
                       value={currentQuestion.points}
                       onChange={(e) => setCurrentQuestion({ ...currentQuestion, points: Number(e.target.value) })}
-                      className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-blue-400 transition-colors"
-                      style={{ borderRadius: '6px' }}
                       min="1"
                     />
                   </div>
@@ -733,32 +665,28 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
 
             {currentQuestion.question_type === 'one_word' && (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Correct Answer <span style={{ color: colors.rose }}>*</span>
-                    </label>
-                    <input
+                    <Label>Correct Answer *</Label>
+                    <Input
                       type="text"
-                      value={currentQuestion.correct_answer}
-                      onChange={(e) => setCurrentQuestion({ ...currentQuestion, correct_answer: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-200 focus:outline-none focus:border-yellow-300 transition-colors"
-                      style={{ borderRadius: '6px', backgroundColor: colors.cream }}
+                      value={currentQuestion.option_a}
+                      onChange={(e) => setCurrentQuestion({ 
+                        ...currentQuestion, 
+                        option_a: e.target.value,
+                        correct_answer: 'A' // Always set to 'A' for one_word type
+                      })}
                       placeholder="Enter the correct answer"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Answer will be case-insensitive and trimmed</p>
+                    <p className="text-xs text-gray-500 mt-1 font-heading">Answer will be case-insensitive and trimmed</p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Points
-                    </label>
-                    <input
+                    <Label>Points</Label>
+                    <Input
                       type="number"
                       value={currentQuestion.points}
                       onChange={(e) => setCurrentQuestion({ ...currentQuestion, points: Number(e.target.value) })}
-                      className="w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:border-blue-400 transition-colors"
-                      style={{ borderRadius: '6px' }}
                       min="1"
                     />
                   </div>
@@ -766,80 +694,92 @@ const CreateTestTab = ({ walletAddress }: CreateTestTabProps) => {
               </>
             )}
 
-            <button
+            <Button
               type="button"
               onClick={addQuestion}
-              className="w-full text-white font-medium py-2.5 px-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
-              style={{
-                backgroundColor: colors.pink,
-                borderRadius: '6px'
-              }}
+              className="w-full"
+              style={{ backgroundColor: colors.orangeLight, borderColor: colors.orange, color: colors.orange }}
             >
               Add Question
-            </button>
-          </div>
-        </div>
+            </Button>
+          </CardContent>
+        </Card>
+
 
         {/* Questions List */}
         {questions.length > 0 && (
-          <div
-            className="bg-white shadow-md p-6 mb-4"
-            style={{ borderRadius: '8px' }}
-          >
-            <h3 className="text-xl font-bold mb-4" style={{ color: colors.darkRed }}>
-              Questions ({questions.length})
-            </h3>
+          <Card className="mb-4 border-2 shadow-[-4px_-4px_0px_0px_rgba(0,0,0,1)]" style={{ backgroundColor: colors.yellowLight, borderColor: '#000' }}>
+            <CardHeader>
+              <CardTitle style={{ color: colors.yellow }}>Questions ({questions.length})</CardTitle>
+            </CardHeader>
 
-            <div className="space-y-3">
+            <CardContent className="space-y-3">
               {questions.map((q, index) => (
-                <div
-                  key={index}
-                  className="p-4 flex justify-between items-start"
-                  style={{ backgroundColor: colors.cream, borderRadius: '6px' }}
-                >
-                  <div className="flex-1">
-                    <p className="font-medium mb-1.5" style={{ color: colors.darkRed }}>
-                      {index + 1}. {q.question_text}
-                    </p>
-                    <div className="text-sm text-gray-600 space-y-1">
-                      <p>A: {q.option_a}</p>
-                      <p>B: {q.option_b}</p>
-                      <p>C: {q.option_c}</p>
-                      <p>D: {q.option_d}</p>
-                      <p className="font-medium mt-2" style={{ color: colors.blue }}>
-                        Correct: {q.correct_answer} | Points: {q.points}
-                      </p>
+                <Card key={index} className="border-2 shadow-[-2px_-2px_0px_0px_rgba(0,0,0,0.5)]" style={{ borderColor: '#000' }}>
+                  <CardContent className="p-3">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <p className="font-bold mb-1 text-sm" style={{ color: colors.yellow }}>
+                          {index + 1}. {q.question_text}
+                        </p>
+                        <div className="text-sm text-gray-700 space-y-1 font-heading">
+                          {q.question_type === 'multiple_choice' && (
+                            <>
+                              <p>A: {q.option_a}</p>
+                              <p>B: {q.option_b}</p>
+                              {q.option_c && <p>C: {q.option_c}</p>}
+                              {q.option_d && <p>D: {q.option_d}</p>}
+                            </>
+                          )}
+                          {q.question_type === 'true_false' && (
+                            <>
+                              <p>A: {q.option_a}</p>
+                              <p>B: {q.option_b}</p>
+                            </>
+                          )}
+                          {q.question_type === 'one_word' && (
+                            <p>Answer: {q.option_a}</p>
+                          )}
+                          <p className="font-bold mt-2" style={{ color: colors.blue }}>
+                            Correct: {
+                              q.question_type === 'one_word' 
+                                ? q.option_a 
+                                : q.question_type === 'true_false'
+                                  ? (q.correct_answer === 'A' ? 'True' : 'False')
+                                  : q.correct_answer
+                            } | Points: {q.points}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={() => removeQuestion(index)}
+                        variant="reverse"
+                        className="ml-4"
+                      >
+                        Remove
+                      </Button>
                     </div>
-                  </div>
-                    <button
-                      type="button"
-                      onClick={() => removeQuestion(index)}
-                      className="ml-4 px-3 py-1 text-white font-medium text-sm shadow-sm hover:shadow-md transition-all"
-                      style={{
-                        backgroundColor: colors.rose,
-                        borderRadius: '6px'
-                      }}
-                    >
-                      Remove
-                    </button>
-                </div>
+                  </CardContent>
+                </Card>
               ))}
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Submit Button */}
-        <button
+        <Button
           type="submit"
           disabled={loading}
-          className="w-full text-white font-medium py-3 px-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
-          style={{
-            backgroundColor: colors.blue,
-            borderRadius: '6px'
+          className="w-full shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:shadow-[-6px_-6px_0px_0px_rgba(0,0,0,1)] active:translate-x-[12px] active:translate-y-[12px] transition-all duration-150"
+          style={{ 
+            backgroundColor: colors.pinkLight, 
+            borderColor: colors.pink, 
+            color: colors.pink 
           }}
         >
           {loading ? 'Creating Test...' : 'Create Test'}
-        </button>
+        </Button>
       </form>
     </div>
   );

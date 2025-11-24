@@ -18,6 +18,12 @@ export interface User {
   last_login: string;
 }
 
+interface CustomBadge {
+  id: string;
+  badge_name: string;
+  svg_url: string;
+}
+
 export interface Test {
   id: string;
   creator_wallet: string;
@@ -25,6 +31,8 @@ export interface Test {
   description?: string;
   company?: string;
   difficulty?: 'easy' | 'medium' | 'hard';
+  custom_badge_id?: string;
+  custom_badge?: CustomBadge | null;
   metadata_cid?: string;
   start_time: string;
   end_time: string;

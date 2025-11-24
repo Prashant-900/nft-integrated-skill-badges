@@ -201,7 +201,7 @@ export const generateBadgeMetadataUri = async (
     const metadata = {
       name: `${testTitle || 'Skill Badge'} - Achievement`,
       description: `Badge earned for completing ${testTitle || 'the test'} with a score of ${score}/${totalScore}`,
-      image: `${supabaseUrl}/storage/v1/object/public/badge-metadata/badge-icon.png`,
+      image: `${supabaseUrl}/storage/v1/object/public/stellar/badge-metadata/badge-icon.png`,
       attributes: [
         {
           trait_type: 'Test ID',
@@ -217,11 +217,11 @@ export const generateBadgeMetadataUri = async (
         },
         {
           trait_type: 'Score',
-          value: score && totalScore ? `${score}/${totalScore}` : 'Passed'
+          value: score !== undefined && totalScore !== undefined ? `${score}/${totalScore}` : 'Passed'
         },
         {
           trait_type: 'Percentage',
-          value: score && totalScore ? `${((score/totalScore) * 100).toFixed(2)}%` : 'N/A'
+          value: score !== undefined && totalScore !== undefined && totalScore > 0 ? `${((score/totalScore) * 100).toFixed(2)}%` : 'N/A'
         },
         {
           trait_type: 'Issued Date',
@@ -232,10 +232,10 @@ export const generateBadgeMetadataUri = async (
 
     console.log('📝 Metadata object created:', metadata);
 
-    // Upload metadata to Supabase Storage
+    // Upload metadata to Supabase Storage - using 'stellar' bucket
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('badge-metadata')
-      .upload(fileName, JSON.stringify(metadata, null, 2), {
+      .from('stellar')
+      .upload(`badge-metadata/${fileName}`, JSON.stringify(metadata, null, 2), {
         contentType: 'application/json',
         upsert: true // Overwrite if exists
       });
@@ -247,13 +247,13 @@ export const generateBadgeMetadataUri = async (
 
     console.log('✅ Metadata uploaded successfully:', uploadData);
     
-    const metadataUrl = `${supabaseUrl}/storage/v1/object/public/badge-metadata/${fileName}`;
+    const metadataUrl = `${supabaseUrl}/storage/v1/object/public/stellar/badge-metadata/${fileName}`;
     console.log('🔗 Metadata URL:', metadataUrl);
     
     // Verify the upload by checking if file exists
     const { data: fileList } = await supabase.storage
-      .from('badge-metadata')
-      .list('', { search: fileName });
+      .from('stellar')
+      .list('badge-metadata', { search: fileName });
     
     if (fileList && fileList.length > 0) {
       console.log('✅ Verified: File exists in bucket');

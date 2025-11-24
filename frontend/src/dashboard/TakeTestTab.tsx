@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { colors } from '../config/colors';
 import { supabase, type Test, type Question } from '../config/supabase';
-import { generateBadgeMetadataUri, mintBadgeNFT } from '../utils/sorobanSimple';
+import { mintNFTViaBackend } from '../utils/backendApi';
+import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
 
 interface TakeTestTabProps {
   testId: string;
@@ -199,10 +201,12 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
         if (question.question_type === 'multiple_choice') {
           isCorrect = userAnswer === question.correct_answer;
         } else if (question.question_type === 'true_false') {
-          isCorrect = userAnswer.toLowerCase() === question.correct_answer.toLowerCase();
+          // For true/false, correct_answer is 'A' or 'B'
+          isCorrect = userAnswer === question.correct_answer;
         } else if (question.question_type === 'one_word') {
-          // Case-insensitive and trimmed comparison
-          isCorrect = userAnswer.toLowerCase().trim() === question.correct_answer.toLowerCase().trim();
+          // For one_word, compare with option_a (case-insensitive and trimmed)
+          const correctAnswer = question.option_a || '';
+          isCorrect = userAnswer.toLowerCase().trim() === correctAnswer.toLowerCase().trim();
         }
         
         if (isCorrect) {
@@ -275,24 +279,16 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
         } else if (badgeData) {
           console.log('✅ Badge entry created in database');
           
-          // Auto-mint the badge NFT immediately
+          // Auto-mint the badge NFT immediately via backend
           try {
-            console.log('🎖️ Auto-minting NFT badge...');
+            console.log('🎖️ Auto-minting NFT badge via backend...');
             
-            const metadataUri = await generateBadgeMetadataUri(
-              testId,
+            const mintResult = await mintNFTViaBackend(
               walletAddress,
+              testId,
               test!.title,
               score,
               totalScore
-            );
-
-            console.log('📝 Metadata URI generated:', metadataUri);
-
-            const mintResult = await mintBadgeNFT(
-              walletAddress,
-              testId,
-              metadataUri
             );
 
             console.log('✅ Badge NFT auto-minted:', mintResult);
@@ -301,13 +297,13 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
             await supabase
               .from('badges')
               .update({
-                nft_token_id: mintResult.tokenId,
-                mint_tx_hash: mintResult.txHash,
-                metadata_url: metadataUri,
+                nft_token_id: mintResult.data.tokenId,
+                mint_tx_hash: mintResult.data.txHash,
+                metadata_url: mintResult.data.metadataUrl,
               })
               .eq('id', badgeData.id);
 
-            console.log(`🎉 Badge successfully created! Token ID: ${mintResult.tokenId}`);
+            console.log(`🎉 Badge successfully created! Token ID: ${mintResult.data.tokenId}`);
           } catch (mintError) {
             console.error('⚠️ Auto-mint failed, can mint later from My Badges:', mintError);
           }
@@ -367,9 +363,9 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
         <div
           className="p-4 border-l-4 mb-4"
           style={{
-            backgroundColor: colors.lightPink,
-            borderColor: colors.rose,
-            color: colors.darkRed,
+            backgroundColor: colors.pinkLight,
+            borderColor: colors.red,
+            color: colors.red,
             borderRadius: '6px'
           }}
         >
@@ -393,7 +389,7 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
     return (
       <div>
         <div className="bg-white shadow-md p-8 text-center" style={{ borderRadius: '8px' }}>
-          <h3 className="text-2xl font-bold mb-3" style={{ color: colors.darkRed }}>
+          <h3 className="text-2xl font-bold mb-3" style={{ color: colors.red }}>
             No Questions Available
           </h3>
           <p className="text-gray-600 mb-4">
@@ -439,14 +435,14 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
             <div 
               className="w-24 h-24 mx-auto mb-4 flex items-center justify-center font-bold text-2xl"
               style={{
-                backgroundColor: result.passed ? colors.lightBlue : colors.lightYellow,
+                backgroundColor: result.passed ? colors.blueLight : colors.yellowLight,
                 color: result.passed ? colors.blue : colors.orange,
                 borderRadius: '50%'
               }}
             >
               {result.passed ? 'PASS' : isPracticeMode ? 'DONE' : 'FAIL'}
             </div>
-            <h2 className="text-3xl font-bold mb-2" style={{ color: colors.darkRed }}>
+            <h2 className="text-3xl font-bold mb-2" style={{ color: colors.red }}>
               {isPracticeMode ? 'Practice Test Complete' : result.passed ? 'Congratulations!' : 'Test Complete'}
             </h2>
             <p className="text-lg text-gray-600">
@@ -455,7 +451,7 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
             {isPracticeMode && (
               <p className="text-sm mt-2 px-4 py-2" style={{ 
                 color: colors.orange,
-                backgroundColor: colors.lightYellow,
+                backgroundColor: colors.yellowLight,
                 borderRadius: '6px'
               }}>
                 Practice Mode: This test has ended. No NFT badge awarded for practice attempts.
@@ -464,7 +460,7 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
             {testEndedDuringTest && !isPracticeMode && (
               <p className="text-sm mt-2 px-4 py-2" style={{ 
                 color: colors.orange,
-                backgroundColor: colors.lightYellow,
+                backgroundColor: colors.yellowLight,
                 borderRadius: '6px'
               }}>
                 The test ended while you were taking it. No badge awarded.
@@ -474,8 +470,8 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
 
           <div className="grid grid-cols-3 gap-4 mb-8">
             <div
-              className="p-6 text-center"
-              style={{ backgroundColor: colors.lightBlue, borderRadius: '8px' }}
+              className="p-4 text-center"
+              style={{ backgroundColor: colors.blueLight, borderRadius: '8px' }}
             >
               <p className="text-sm text-gray-600 mb-2">Score</p>
               <p className="text-3xl font-bold" style={{ color: colors.blue }}>
@@ -484,8 +480,8 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
             </div>
 
             <div
-              className="p-6 text-center"
-              style={{ backgroundColor: colors.lightYellow, borderRadius: '8px' }}
+              className="p-4 text-center"
+              style={{ backgroundColor: colors.yellowLight, borderRadius: '8px' }}
             >
               <p className="text-sm text-gray-600 mb-2">Percentage</p>
               <p className="text-3xl font-bold" style={{ color: colors.orange }}>
@@ -494,14 +490,14 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
             </div>
 
             <div
-              className="p-6 text-center"
+              className="p-4 text-center"
               style={{
-                backgroundColor: result.passed ? colors.lightMint : colors.lightPink,
+                backgroundColor: result.passed ? colors.greenLight : colors.pinkLight,
                 borderRadius: '8px'
               }}
             >
               <p className="text-sm text-gray-600 mb-2">Status</p>
-              <p className="text-xl font-bold" style={{ color: result.passed ? '#059669' : colors.darkRed }}>
+              <p className="text-xl font-bold" style={{ color: result.passed ? '#059669' : colors.red }}>
                 {result.passed ? 'PASSED' : 'FAILED'}
               </p>
             </div>
@@ -509,9 +505,9 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
 
           {result.passed && !isPracticeMode && (
             <div
-              className="p-6 mb-6 text-center"
+              className="p-4 mb-6 text-center"
               style={{
-                backgroundColor: colors.lightMint,
+                backgroundColor: colors.greenLight,
                 borderRadius: '8px',
                 border: `2px solid #059669`
               }}
@@ -533,9 +529,9 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
 
           {!result.passed && !testEndedDuringTest && (
             <div
-              className="p-6 mb-6 text-center"
+              className="p-4 mb-6 text-center"
               style={{
-                backgroundColor: colors.lightYellow,
+                backgroundColor: colors.yellowLight,
                 borderRadius: '8px'
               }}
             >
@@ -572,14 +568,14 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
         <div
           className="p-4 mb-4 border-l-4 flex items-center gap-3"
           style={{
-            backgroundColor: colors.lightPink,
-            borderColor: colors.rose,
+            backgroundColor: colors.pinkLight,
+            borderColor: colors.red,
             borderRadius: '6px'
           }}
         >
           <div className="text-3xl">⚠️</div>
           <div>
-            <p className="font-bold" style={{ color: colors.darkRed }}>
+            <p className="font-bold" style={{ color: colors.red }}>
               This test has already ended {testEndedAgo}
             </p>
             <p className="text-sm text-gray-600 mt-1">
@@ -593,7 +589,7 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
       <div className="bg-white shadow-md p-6 mb-6" style={{ borderRadius: '8px' }}>
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h2 className="text-2xl font-bold" style={{ color: colors.darkRed }}>
+            <h2 className="text-2xl font-bold" style={{ color: colors.red }}>
               {test.title}
             </h2>
             {test.company && (
@@ -605,14 +601,14 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
               <div className="text-center">
                 <p className="text-xs text-gray-500 mb-1">Time Remaining</p>
                 <p className="text-lg font-bold" style={{ 
-                  color: timeRemaining < 60000 ? colors.rose : timeRemaining < 300000 ? colors.orange : colors.blue 
+                  color: timeRemaining < 60000 ? colors.red : timeRemaining < 300000 ? colors.orange : colors.blue 
                 }}>
                   {formatTimeRemaining(timeRemaining)}
                 </p>
               </div>
             )}
             {wasAlreadyEnded && (
-              <div className="px-4 py-2" style={{ backgroundColor: colors.lightYellow, borderRadius: '6px' }}>
+              <div className="px-4 py-2" style={{ backgroundColor: colors.yellowLight, borderRadius: '6px' }}>
                 <p className="text-xs text-gray-500">Practice Mode</p>
                 <p className="text-sm font-semibold" style={{ color: colors.orange }}>
                   No Time Limit
@@ -620,9 +616,9 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
               </div>
             )}
             {testEnded && !wasAlreadyEnded && (
-              <div className="px-4 py-2" style={{ backgroundColor: colors.lightPink, borderRadius: '6px' }}>
+              <div className="px-4 py-2" style={{ backgroundColor: colors.pinkLight, borderRadius: '6px' }}>
                 <p className="text-xs text-gray-500">Test Ended</p>
-                <p className="text-sm font-semibold" style={{ color: colors.darkRed }}>
+                <p className="text-sm font-semibold" style={{ color: colors.red }}>
                   Time's Up
                 </p>
               </div>
@@ -658,19 +654,19 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
 
       {/* Question */}
       <div className="bg-white shadow-md p-8 mb-6" style={{ borderRadius: '8px' }}>
-        <div className="mb-6">
+        <div className="mb-4">
           <div className="flex items-start gap-3 mb-4">
             <span
               className="px-3 py-1 text-sm font-bold"
               style={{
-                backgroundColor: colors.lightBlue,
+                backgroundColor: colors.blueLight,
                 color: colors.blue,
                 borderRadius: '6px'
               }}
             >
               Q{currentQuestionIndex + 1}
             </span>
-            <h3 className="text-xl font-semibold flex-1" style={{ color: colors.darkRed }}>
+            <h3 className="text-xl font-semibold flex-1" style={{ color: colors.red }}>
               {currentQuestion.question_text}
             </h3>
             <span className="text-sm text-gray-500">
@@ -700,7 +696,7 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
                     }`}
                     style={{
                       borderColor: isSelected ? colors.blue : '#E5E7EB',
-                      backgroundColor: isSelected ? colors.lightBlue : 'white',
+                      backgroundColor: isSelected ? colors.blueLight : 'white',
                       borderRadius: '8px'
                     }}
                   >
@@ -726,25 +722,27 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
 
           {currentQuestion.question_type === 'true_false' && (
             <div className="flex gap-4">
-              {['true', 'false'].map((option) => {
-                const isSelected = answers[currentQuestion.id]?.toLowerCase() === option.toLowerCase();
-                const label = option.charAt(0).toUpperCase() + option.slice(1);
+              {[
+                { value: 'A', label: 'True' },
+                { value: 'B', label: 'False' }
+              ].map((option) => {
+                const isSelected = answers[currentQuestion.id] === option.value;
 
                 return (
                   <button
-                    key={option}
-                    onClick={() => handleAnswerSelect(currentQuestion.id, label)}
+                    key={option.value}
+                    onClick={() => handleAnswerSelect(currentQuestion.id, option.value)}
                     className={`flex-1 py-4 px-6 font-semibold border-2 transition-all duration-200 ${
                       isSelected ? 'shadow-md' : 'hover:shadow-sm'
                     }`}
                     style={{
                       borderColor: isSelected ? colors.blue : '#E5E7EB',
-                      backgroundColor: isSelected ? colors.lightBlue : 'white',
+                      backgroundColor: isSelected ? colors.blueLight : 'white',
                       borderRadius: '8px',
                       color: isSelected ? colors.blue : '#6B7280'
                     }}
                   >
-                    {label}
+                    {option.label}
                   </button>
                 );
               })}
@@ -756,16 +754,20 @@ const TakeTestTab = ({ testId, walletAddress, onBack }: TakeTestTabProps) => {
               <input
                 type="text"
                 value={answers[currentQuestion.id] || ''}
-                onChange={(e) => handleAnswerSelect(currentQuestion.id, e.target.value)}
+                onChange={(e) => {
+                  console.log('One-word input changed:', e.target.value);
+                  handleAnswerSelect(currentQuestion.id, e.target.value);
+                }}
                 placeholder="Type your answer here..."
                 className="w-full px-5 py-3 border-2 border-gray-300 focus:outline-none focus:border-2 transition-colors"
                 style={{
                   borderRadius: '8px',
                   ...(answers[currentQuestion.id] && {
                     borderColor: colors.blue,
-                    backgroundColor: colors.lightBlue
+                    backgroundColor: colors.blueLight
                   })
                 }}
+                autoComplete="off"
               />
               <p className="text-xs text-gray-500 mt-2">Answer is case-insensitive and spaces will be trimmed</p>
             </div>

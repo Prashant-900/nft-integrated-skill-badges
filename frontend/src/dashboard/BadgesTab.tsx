@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import { colors } from '../config/colors';
 import { supabase, type Badge, type Test, type Attempt } from '../config/supabase';
+import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { mintNFTViaBackend } from '../utils/backendApi';
+import { getContractExplorerUrl, CONTRACT_IDS } from '../utils/sorobanSimple';
 
 interface BadgeWithTest extends Badge {
   test?: Test;
@@ -13,6 +17,7 @@ interface PracticeAttempt extends Attempt {
 interface BadgesTabProps {
   walletAddress: string;
   onViewTest: (testId: string) => void;
+  onSwitchTab?: (tab: string) => void;
 }
 
 interface GroupedBadges {
@@ -21,11 +26,12 @@ interface GroupedBadges {
   practiceAttempts: PracticeAttempt[];
 }
 
-const BadgesTab = ({ walletAddress, onViewTest }: BadgesTabProps) => {
+const BadgesTab = ({ walletAddress, onViewTest, onSwitchTab }: BadgesTabProps) => {
   const [groupedBadges, setGroupedBadges] = useState<GroupedBadges[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [filterByCompany, setFilterByCompany] = useState<Record<string, 'all' | 'active' | 'practice'>>({});
+  const [mintingBadgeId, setMintingBadgeId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUserBadgesAndAttempts();
@@ -59,6 +65,19 @@ const BadgesTab = ({ walletAddress, onViewTest }: BadgesTabProps) => {
       console.log('Attempts data:', attemptsData);
       console.log('Badges data:', badgesData?.length);
       console.log('Badges:', badgesData);
+      
+      // Log detailed badge information
+      badgesData?.forEach((badge, index) => {
+        console.log(`Badge ${index + 1}:`, {
+          id: badge.id,
+          test_id: badge.test_id,
+          nft_token_id: badge.nft_token_id,
+          mint_tx_hash: badge.mint_tx_hash,
+          metadata_url: badge.metadata_url,
+          created_at: badge.created_at,
+          has_nft: !!badge.nft_token_id
+        });
+      });
 
       // Get unique test IDs from both badges and attempts
       const badgeTestIds = badgesData?.map(b => b.test_id) || [];
@@ -147,6 +166,48 @@ const BadgesTab = ({ walletAddress, onViewTest }: BadgesTabProps) => {
     }
   };
 
+  const retryMintNFT = async (badge: BadgeWithTest) => {
+    try {
+      setMintingBadgeId(badge.id);
+      console.log('🔄 Retrying NFT mint for badge via backend:', badge.id);
+
+      // Mint the NFT via backend (backend handles metadata generation and upload)
+      const mintResult = await mintNFTViaBackend(
+        walletAddress,
+        badge.test_id,
+        badge.test?.title || 'Achievement Badge',
+        0, // Score not available here, use 0 or fetch from attempts
+        0
+      );
+
+      console.log('✅ Badge NFT minted:', mintResult);
+
+      // Update badge record with blockchain data
+      const { error: updateError } = await supabase
+        .from('badges')
+        .update({
+          nft_token_id: mintResult.data.tokenId,
+          mint_tx_hash: mintResult.data.txHash,
+          metadata_url: mintResult.data.metadataUrl,
+        })
+        .eq('id', badge.id);
+
+      if (updateError) throw updateError;
+
+      console.log(`🎉 Badge successfully minted! Token ID: ${mintResult.data.tokenId}`);
+      
+      // Refresh badges to show the updated data
+      await fetchUserBadgesAndAttempts();
+      
+      alert(`NFT Badge minted successfully! Token ID: ${mintResult.data.tokenId}`);
+    } catch (err: any) {
+      console.error('❌ Retry mint failed:', err);
+      alert(`Failed to mint NFT: ${err.message || 'Unknown error'}`);
+    } finally {
+      setMintingBadgeId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -160,9 +221,9 @@ const BadgesTab = ({ walletAddress, onViewTest }: BadgesTabProps) => {
       <div
         className="p-4 border-l-4"
         style={{
-          backgroundColor: colors.lightPink,
-          borderColor: colors.rose,
-          color: colors.darkRed,
+          backgroundColor: colors.pinkLight,
+          borderColor: colors.red,
+          color: colors.red,
           borderRadius: '6px'
         }}
       >
@@ -173,27 +234,22 @@ const BadgesTab = ({ walletAddress, onViewTest }: BadgesTabProps) => {
 
   if (groupedBadges.length === 0) {
     return (
-      <div
-        className="bg-white shadow-md p-8 text-center"
-        style={{ borderRadius: '8px' }}
-      >
-        <h3 className="text-2xl font-bold mb-3" style={{ color: colors.darkRed }}>
-          No Badges or Completed Tests Yet
-        </h3>
-        <p className="text-gray-600 mb-6">
-          You haven't earned any badges or completed any tests yet. Take tests to earn your first badge!
-        </p>
-        <div
-          className="inline-block px-6 py-3 font-medium"
-          style={{
-            backgroundColor: colors.lightBlue,
-            color: colors.blue,
-            borderRadius: '6px'
-          }}
-        >
-          Start earning badges
-        </div>
-      </div>
+      <Card style={{ backgroundColor: colors.blueLight, borderColor: colors.blue }} className="border-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+        <CardHeader>
+          <CardTitle style={{ color: colors.blue }}>No Badges or Completed Tests Yet</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-foreground/70 mb-4 text-sm">
+            You haven't earned any badges or completed any tests yet. Take tests to earn your first badge!
+          </p>
+          <Button 
+            onClick={() => onSwitchTab?.('earn')}
+            style={{ backgroundColor: colors.greenLight, borderColor: colors.green, color: colors.green }}
+          >
+            Start earning badges
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -201,71 +257,39 @@ const BadgesTab = ({ walletAddress, onViewTest }: BadgesTabProps) => {
   const totalPractice = groupedBadges.reduce((sum, group) => sum + group.practiceAttempts.length, 0);
 
   return (
-    <div>
-      <div
-        className="bg-white shadow-md p-6 mb-6"
-        style={{ borderRadius: '8px' }}
+    <div className="space-y-4">
+      <Card
+        className="border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+        style={{ backgroundColor: colors.purpleLight }}
       >
-        <h3 className="text-xl font-bold mb-2" style={{ color: colors.darkRed }}>
-          Your Achievements
-        </h3>
-        <div className="flex gap-6 mt-4">
-          <div className="flex items-center gap-3">
+        <CardHeader>
+          <CardTitle style={{ color: colors.purple }}>
+            Your Achievements
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3">
             <div
-              className="w-12 h-12 flex items-center justify-center font-bold text-xl"
-              style={{
-                backgroundColor: colors.lightBlue,
-                color: colors.blue,
-                borderRadius: '8px'
-              }}
+              className="p-3 text-center border-2 border-black rounded-base"
+              style={{ backgroundColor: colors.white }}
             >
-              {totalBadges}
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Earned Badges</p>
-              <p className="text-lg font-semibold" style={{ color: colors.blue }}>
-                NFT Certified
+              <p className="text-2xl font-bold mb-1" style={{ color: colors.purple }}>
+                {totalBadges}
               </p>
+              <p className="text-xs text-gray-600">Earned Badges</p>
+            </div>
+            <div
+              className="p-3 text-center border-2 border-black rounded-base"
+              style={{ backgroundColor: colors.white }}
+            >
+              <p className="text-2xl font-bold mb-1" style={{ color: colors.purple }}>
+                {totalPractice}
+              </p>
+              <p className="text-xs text-gray-600">Practice Tests</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div
-              className="w-12 h-12 flex items-center justify-center font-bold text-xl"
-              style={{
-                backgroundColor: colors.lightYellow,
-                color: colors.orange,
-                borderRadius: '8px'
-              }}
-            >
-              {totalPractice}
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Practice Tests</p>
-              <p className="text-lg font-semibold" style={{ color: colors.orange }}>
-                Completed
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div
-              className="w-12 h-12 flex items-center justify-center font-bold text-xl"
-              style={{
-                backgroundColor: colors.lightMint,
-                color: colors.darkRed,
-                borderRadius: '8px'
-              }}
-            >
-              {groupedBadges.length}
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Companies</p>
-              <p className="text-lg font-semibold" style={{ color: colors.darkRed }}>
-                Organizations
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Grouped by Company */}
       {groupedBadges.map((group) => {
@@ -274,20 +298,24 @@ const BadgesTab = ({ walletAddress, onViewTest }: BadgesTabProps) => {
         const filteredPractice = filter === 'active' ? [] : group.practiceAttempts;
         
         return (
-          <div key={group.company} className="mb-8">
+          <Card
+            key={group.company}
+            className="border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] transition-all duration-150"
+            style={{ backgroundColor: colors.yellowLight }}
+          >
             {/* Company Header */}
-            <div
-              className="p-4 mb-4 flex items-center justify-between"
+            <CardHeader
+              className="flex-row items-center justify-between"
               style={{
-                backgroundColor: colors.blue,
-                borderRadius: '8px'
+                backgroundColor: colors.yellow,
+                color: colors.white,
               }}
             >
               <div>
-                <h3 className="text-2xl font-bold text-white">
+                <h3 className="text-lg font-bold text-white">
                   {group.company}
                 </h3>
-                <p className="text-sm text-white opacity-90">
+                <p className="text-xs text-white opacity-90">
                   {group.badges.length} badge{group.badges.length !== 1 ? 's' : ''} earned
                   {group.practiceAttempts.length > 0 && ` • ${group.practiceAttempts.length} practice test${group.practiceAttempts.length !== 1 ? 's' : ''} passed`}
                 </p>
@@ -300,210 +328,221 @@ const BadgesTab = ({ walletAddress, onViewTest }: BadgesTabProps) => {
                   ...filterByCompany,
                   [group.company]: e.target.value as 'all' | 'active' | 'practice'
                 })}
-                className="px-4 py-2 font-medium cursor-pointer"
+                className="px-3 py-2 font-bold cursor-pointer border-2 border-black rounded-base shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all duration-150"
                 style={{
                   backgroundColor: 'white',
-                  color: colors.blue,
-                  borderRadius: '6px',
-                  border: 'none',
-                  outline: 'none'
+                  color: colors.yellow
                 }}
               >
                 <option value="all">All Tests</option>
                 <option value="active">Active Only</option>
                 <option value="practice">Practice Only</option>
               </select>
-            </div>
+            </CardHeader>
 
-            {/* Badges Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Badges Grid - Horizontal Scroll */}
+            <div className="flex gap-4 p-4 overflow-x-auto">
               {/* Earned Badges */}
               {filteredBadges.map((badge) => (
-              <div
+              <Card
                 key={badge.id}
-                className="bg-white shadow-md hover:shadow-xl transition-shadow duration-300 overflow-hidden"
-                style={{ borderRadius: '8px', border: `2px solid ${colors.lightBlue}` }}
+                className="flex-shrink-0 w-64 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all duration-150"
+                style={{ backgroundColor: colors.cyanLight }}
               >
-                <div
-                  className="h-40 flex items-center justify-center"
-                  style={{
-                    backgroundColor: colors.blue
-                  }}
+                <CardHeader
+                  className="flex items-center justify-center h-24"
+                  style={{ backgroundColor: colors.cyan }}
                 >
-                  <div className="text-white text-center">
-                    <div className="text-4xl font-bold mb-2">NFT BADGE</div>
-                    <p className="font-semibold text-sm">Certified Achievement</p>
-                  </div>
-                </div>
+                  {badge.test?.custom_badge ? (
+                    <div className="flex items-center gap-2 text-white">
+                      <img 
+                        src={badge.test.custom_badge.svg_url} 
+                        alt={badge.test.custom_badge.badge_name || 'Badge'} 
+                        className="w-12 h-12 object-cover rounded-base border-2 border-white"
+                      />
+                      <div className="text-left">
+                        <div className="text-sm font-bold">{badge.test.custom_badge.badge_name || 'NFT BADGE'}</div>
+                        <p className="font-semibold text-xs">Certified Achievement</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-white text-center">
+                      <div className="text-2xl font-bold mb-0.5">NFT BADGE</div>
+                      <p className="font-semibold text-xs">Certified Achievement</p>
+                    </div>
+                  )}
+                </CardHeader>
 
-                <div className="p-5">
-                  <h4 className="font-bold text-lg mb-2" style={{ color: colors.darkRed }}>
+                <CardContent className="p-3 space-y-2">
+                  <h4 className="font-bold text-base" style={{ color: colors.cyan }}>
                     {badge.test?.title || 'Test Badge'}
                   </h4>
 
                   <div
-                    className="p-3 mb-3"
-                    style={{ backgroundColor: colors.cream, borderRadius: '6px' }}
+                    className="p-1.5 border-2 border-black rounded-base"
+                    style={{ backgroundColor: colors.white }}
                   >
-                    <p className="text-xs text-gray-500 mb-1">Earned On</p>
-                    <p className="font-mono text-sm" style={{ color: colors.blue }}>
+                    <p className="text-xs text-gray-600">Earned On</p>
+                    <p className="font-mono text-xs font-bold" style={{ color: colors.cyan }}>
                       {new Date(badge.created_at).toLocaleString('en-US', {
                         year: 'numeric',
                         month: 'short',
-                        day: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit'
+                        day: 'numeric'
                       })}
                     </p>
                   </div>
 
-                  {badge.nft_token_id && (
+                  {badge.nft_token_id ? (
                     <div
-                      className="p-3 mb-3"
-                      style={{ backgroundColor: colors.lightMint, borderRadius: '6px' }}
+                      className="p-1.5 border-2 border-black rounded-base"
+                      style={{ backgroundColor: colors.white }}
                     >
-                      <p className="text-xs text-gray-500 mb-1">NFT Token ID</p>
-                      <p className="font-mono text-xs break-all" style={{ color: '#059669' }}>
+                      <p className="text-xs text-gray-600">NFT Token ID</p>
+                      <p className="font-mono text-xs break-all font-bold" style={{ color: colors.cyan }}>
                         {badge.nft_token_id}
                       </p>
                     </div>
-                  )}
-
-                  {badge.metadata_url && (
+                  ) : (
                     <div
-                      className="p-3 mb-3"
-                      style={{ backgroundColor: colors.lightBlue, borderRadius: '6px' }}
+                      className="p-1.5 border-2 border-black rounded-base"
+                      style={{ backgroundColor: colors.redLight }}
                     >
-                      <p className="text-xs text-gray-500 mb-1">Metadata URI</p>
-                      <p className="font-mono text-xs break-all" style={{ color: colors.blue }}>
-                        {badge.metadata_url}
+                      <p className="text-xs text-gray-600">NFT Status</p>
+                      <p className="text-xs font-bold" style={{ color: colors.red }}>
+                        ❌ Minting Failed
                       </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Click below to retry
+                      </p>
+                      <Button
+                        onClick={() => retryMintNFT(badge)}
+                        disabled={mintingBadgeId === badge.id}
+                        className="w-full mt-2 text-xs py-1 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                        style={{ backgroundColor: colors.yellow, color: 'black' }}
+                      >
+                        {mintingBadgeId === badge.id ? '⏳ Minting...' : '🔄 Retry Mint NFT'}
+                      </Button>
                     </div>
                   )}
 
                   {badge.mint_tx_hash && (
-                    <button
-                      className="w-full text-white font-semibold py-2 px-4 text-sm shadow-md hover:shadow-lg transition-all duration-200 mb-2"
-                      style={{
-                        backgroundColor: colors.blue,
-                        borderRadius: '6px'
-                      }}
+                    <Button
+                      className="w-full border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-[-2px_-2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] transition-all duration-150"
+                      style={{ backgroundColor: colors.cyan, color: 'white' }}
                       onClick={() => {
                         window.open(`https://stellar.expert/explorer/testnet/tx/${badge.mint_tx_hash}`, '_blank');
                       }}
                     >
-                      View on Stellar Explorer
-                    </button>
+                      View on Explorer
+                    </Button>
+                  )}
+
+                  {badge.nft_token_id && CONTRACT_IDS.BADGE_NFT && (
+                    <Button
+                      className="w-full border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-[-2px_-2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] transition-all duration-150"
+                      style={{ backgroundColor: colors.green, color: 'white' }}
+                      onClick={() => {
+                        window.open(getContractExplorerUrl(CONTRACT_IDS.BADGE_NFT!), '_blank');
+                      }}
+                    >
+                      📜 View NFT Contract
+                    </Button>
                   )}
 
                   {badge.metadata_url && (
-                    <button
-                      className="w-full text-gray-700 font-semibold py-2 px-4 text-sm border-2 hover:bg-gray-50 transition-all duration-200 mb-2"
-                      style={{
-                        borderColor: colors.blue,
-                        borderRadius: '6px'
-                      }}
+                    <Button
+                      variant="reverse"
+                      className="w-full"
                       onClick={() => {
                         window.open(badge.metadata_url!, '_blank');
                       }}
                     >
                       View Metadata
-                    </button>
+                    </Button>
                   )}
 
                   {badge.test_id && (
-                    <button
-                      className="w-full text-white font-semibold py-2 px-4 text-sm shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
-                      style={{
-                        backgroundColor: colors.orange,
-                        borderRadius: '6px'
-                      }}
+                    <Button
+                      className="w-full border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-[-2px_-2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] transition-all duration-150"
+                      style={{ backgroundColor: colors.purple, color: 'white' }}
                       onClick={() => onViewTest(badge.test_id)}
                     >
                       View Test in Earn Tab
-                    </button>
+                    </Button>
                   )}
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             ))}
 
             {/* Practice Attempts */}
             {filteredPractice.map((attempt) => (
-              <div
+              <Card
                 key={attempt.id}
-                className="bg-white shadow-md hover:shadow-xl transition-shadow duration-300 overflow-hidden"
-                style={{ borderRadius: '8px', border: `2px dashed ${colors.orange}` }}
+                className="flex-shrink-0 w-64 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all duration-150"
+                style={{ backgroundColor: colors.pinkLight }}
               >
-                <div
-                  className="h-40 flex items-center justify-center"
-                  style={{
-                    backgroundColor: colors.orange
-                  }}
+                <CardHeader
+                  className="flex items-center justify-center h-24"
+                  style={{ backgroundColor: colors.pink }}
                 >
                   <div className="text-white text-center">
-                    <div className="text-4xl font-bold mb-2">PRACTICE</div>
-                    <p className="font-semibold text-sm">Test Completed</p>
+                    <div className="text-2xl font-bold mb-0.5">PRACTICE</div>
+                    <p className="font-semibold text-xs">Test Completed</p>
                   </div>
-                </div>
+                </CardHeader>
 
-                <div className="p-5">
-                  <h4 className="font-bold text-lg mb-2" style={{ color: colors.orange }}>
+                <CardContent className="p-3 space-y-2">
+                  <h4 className="font-bold text-base" style={{ color: colors.pink }}>
                     {attempt.test?.title || 'Practice Test'}
                   </h4>
 
                   <div
-                    className="p-3 mb-3"
-                    style={{ backgroundColor: colors.cream, borderRadius: '6px' }}
+                    className="p-1.5 border-2 border-black rounded-base"
+                    style={{ backgroundColor: colors.white }}
                   >
-                    <p className="text-xs text-gray-500 mb-1">Completed On</p>
-                    <p className="font-mono text-sm" style={{ color: colors.orange }}>
+                    <p className="text-xs text-gray-600">Completed On</p>
+                    <p className="font-mono text-xs font-bold" style={{ color: colors.pink }}>
                       {new Date(attempt.created_at).toLocaleString('en-US', {
                         year: 'numeric',
                         month: 'short',
-                        day: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit'
+                        day: 'numeric'
                       })}
                     </p>
                   </div>
 
                   <div
-                    className="p-3 mb-3"
-                    style={{ backgroundColor: colors.lightMint, borderRadius: '6px' }}
+                    className="p-1.5 border-2 border-black rounded-base"
+                    style={{ backgroundColor: colors.white }}
                   >
-                    <p className="text-xs text-gray-500 mb-1">Score</p>
-                    <p className="font-mono text-sm font-bold" style={{ color: '#059669' }}>
+                    <p className="text-xs text-gray-600">Score</p>
+                    <p className="font-mono text-xs font-bold" style={{ color: colors.pink }}>
                       {attempt.percentage}%
                     </p>
                   </div>
 
                   <div
-                    className="p-3 mb-3"
-                    style={{ backgroundColor: colors.lightYellow, borderRadius: '6px' }}
+                    className="p-2 border-2 border-black rounded-base"
+                    style={{ backgroundColor: colors.white }}
                   >
                     <p className="text-xs text-gray-700">
-                      <strong>Practice Mode:</strong> This test was completed after it ended.
-                      No NFT badge is awarded for practice attempts.
+                      <strong>Practice Mode:</strong> No NFT badge awarded for practice attempts.
                     </p>
                   </div>
 
                   {attempt.test_id && (
-                    <button
-                      className="w-full text-white font-semibold py-2 px-4 text-sm shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
-                      style={{
-                        backgroundColor: colors.rose,
-                        borderRadius: '6px'
-                      }}
+                    <Button
+                      className="w-full border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-[-2px_-2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] transition-all duration-150"
+                      style={{ backgroundColor: colors.pink, color: 'white' }}
                       onClick={() => onViewTest(attempt.test_id)}
                     >
                       Retake Test
-                    </button>
+                    </Button>
                   )}
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
-        </div>
+        </Card>
       );
       })}
     </div>
